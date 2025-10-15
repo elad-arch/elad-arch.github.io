@@ -1289,3 +1289,11 @@ input[type="file"] {
     display: none;
 }
 
+.credit-card-icon {
+    color: #854d0e; /* צבע תואם לתגית */
+    flex-shrink: 0; /* מונע מהאייקון להתכווץ */
+}
+
+[data-theme="dark"] .credit-card-icon {
+    color: #fef9c3; /* צבע תואם לתגית במצב כהה */
+}
