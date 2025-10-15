@@ -26,7 +26,7 @@ const themeIcons = {
 };
 
 function selectTransactionType(type) {
-    if (type === 'loan' && currentType === 'income') {
+    if ((type === 'loan' || type === 'variable') && currentType === 'income') {
         return;
     }
     
@@ -533,13 +533,18 @@ function openModal(event, type, index = -1) {
     const loanTotalInput = document.getElementById('loanTotalInput');
     const loanCurrentInput = document.getElementById('loanCurrentInput');
     const loanBtn = document.getElementById('typeLoan');
+    const variableBtn = document.getElementById('typeVariable');
 
     if (type === 'income') {
         loanBtn.classList.add('disabled');
         loanBtn.title = 'הלוואה זמינה רק בהוצאות';
+        variableBtn.classList.add('disabled');
+        variableBtn.title = 'כרטיס אשראי זמין רק בהוצאות';
     } else {
         loanBtn.classList.remove('disabled');
         loanBtn.title = '';
+        variableBtn.classList.remove('disabled');
+        variableBtn.title = '';
     }
 
     if (index >= 0) {
