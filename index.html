@@ -146,7 +146,6 @@
             transition: all 0.3s;
             display: flex;
             align-items: center;
-            gap: 8px;
         }
 
         .btn svg {
@@ -159,6 +158,7 @@
             color: white;
             padding: 10px 20px;
             border-radius: 9999px;
+            gap: 8px;
         }
 
         .btn-import {
@@ -166,6 +166,7 @@
             color: white;
             padding: 10px 20px;
             border-radius: 9999px;
+            gap: 8px;
         }
 
         .btn-theme {
@@ -175,12 +176,15 @@
             height: 48px;
             padding: 0;
             border-radius: 50%;
+            display: flex;
             justify-content: center;
             align-items: center;
-            gap: 0; /* Ensures perfect centering */
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
         }
 
-        .btn:hover {
+        .btn:hover, .btn-theme:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
@@ -1283,8 +1287,8 @@
                 </div>
             </div>
             <div class="controls">
-                <button class="btn btn-theme" onclick="cycleTheme()" id="themeBtn" title="שנה ערכת נושא">
-                     <svg id="themeIconContainer" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
+                <button class="btn-theme" onclick="cycleTheme()" id="themeBtn" title="שנה ערכת נושא">
+                     <span id="themeIconContainer"></span>
                 </button>
                 <button class="btn btn-export" onclick="exportData()" title="ייצוא נתונים">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -2647,6 +2651,10 @@
     </script>
 </body>
 </html>
+
+
+
+
 
 
 
