@@ -677,7 +677,7 @@ function render() {
                 badgeText = 'הלוואה';
             } else if (t.type === 'variable') {
                 badgeClass = 'badge-variable';
-                badgeText = 'משתנה';
+                badgeText = 'כרטיס אשראי';
             } else if (t.type === 'onetime') {
                 badgeClass = 'badge-onetime';
                 badgeText = 'חד-פעמי';
@@ -717,6 +717,11 @@ function render() {
                 `;
             }
 
+            let transactionIcon = '';
+            if (t.type === 'variable') {
+                transactionIcon = `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>`;
+            }
+
             const itemHTML = `
                 <div class="transaction-info">
                     <div class="transaction-check ${t.checked ? 'checked' : ''}" 
@@ -725,6 +730,7 @@ function render() {
                     </div>
                      <div class="transaction-details">
                         <div class="transaction-text">
+                            ${transactionIcon}
                             ${t.description}
                             <span class="transaction-badge ${badgeClass}">${badgeText}</span>
                         </div>
@@ -786,7 +792,7 @@ function render() {
                 badgeText = 'הלוואה';
             } else if (t.type === 'variable') {
                 badgeClass = 'badge-variable';
-                badgeText = 'משתנה';
+                badgeText = 'כרטיס אשראי';
             } else if (t.type === 'onetime') {
                 badgeClass = 'badge-onetime';
                 badgeText = 'חד-פעמי';
@@ -826,6 +832,11 @@ function render() {
                 `;
             }
             
+            let transactionIcon = '';
+            if (t.type === 'variable') {
+                transactionIcon = `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>`;
+            }
+
             const itemHTML = `
                 <div class="transaction-info">
                     <div class="transaction-check ${t.checked ? 'checked' : ''}" 
@@ -834,6 +845,7 @@ function render() {
                     </div>
                     <div class="transaction-details">
                         <div class="transaction-text">
+                            ${transactionIcon}
                             ${t.description}
                             <span class="transaction-badge ${badgeClass}">${badgeText}</span>
                         </div>
@@ -886,7 +898,7 @@ function render() {
             incomeLabelText = 'סה״כ קבועות';
             break;
         case 'variable':
-            incomeLabelText = 'סה״כ משתנות';
+            incomeLabelText = 'סה״כ כ.אשראי';
             break;
         case 'onetime':
             incomeLabelText = 'סה״כ חד-פעמיות';
@@ -907,7 +919,7 @@ function render() {
             expenseLabelText = 'סה״כ קבועות';
             break;
         case 'variable':
-            expenseLabelText = 'סה״כ משתנות';
+            expenseLabelText = 'סה״כ כ.אשראי';
             break;
         case 'onetime':
             expenseLabelText = 'סה״כ חד-פעמיות';
@@ -1056,4 +1068,3 @@ function loadCardStates() {
         }
     });
 }
-
