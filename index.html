@@ -210,6 +210,12 @@
             border-bottom: 2px solid var(--border-color);
         }
 
+        .card.is-collapsed .card-header {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
         .card-title-row {
             display: flex;
             justify-content: space-between;
@@ -247,6 +253,10 @@
             gap: 8px;
             justify-content: center;
             position: relative;
+        }
+
+        .card.is-collapsed .header-actions {
+            display: none;
         }
 
         .add-btn, .chart-btn, .edit-mode-btn, .filter-btn, .sort-mode-btn {
@@ -820,12 +830,39 @@
             max-height: 2000px; /* High value to allow for content */
         }
 
-        .card-body.collapsed {
+        .card.is-collapsed .card-body {
             max-height: 0;
             padding-top: 0;
             padding-bottom: 0;
             margin-top: 0;
         }
+
+        .card-summary-collapsed {
+            display: none;
+            padding-top: 16px;
+            text-align: center;
+        }
+        
+        .card.is-collapsed .card-summary-collapsed {
+            display: block;
+        }
+
+        .card-summary-collapsed .summary-label {
+            font-size: 1em;
+            color: var(--text-secondary);
+            margin-left: 8px;
+        }
+        .card-summary-collapsed .summary-value {
+            font-size: 1.5em;
+            font-weight: 700;
+        }
+        .income-card .card-summary-collapsed .summary-value { color: #10b981; }
+        .expense-card .card-summary-collapsed .summary-value { color: #ef4444; }
+        .loans-summary-card .card-summary-collapsed .summary-value { color: #6d28d9; }
+        [data-theme="dark"] .loans-summary-card .card-summary-collapsed .summary-value { color: #c4b5fd; }
+        .summary-card .card-summary-collapsed .summary-value.positive { color: #10b981; }
+        .summary-card .card-summary-collapsed .summary-value.negative { color: #ef4444; }
+
 
         .summary-row-label {
             font-size: 16px;
@@ -1272,6 +1309,7 @@
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
                         </button>
                     </div>
+                     <div class="card-summary-collapsed" id="incomeCollapsedSummary"></div>
                     <div class="header-actions">
                         <div class="dropdown-container">
                             <button class="filter-btn" id="filterBtnIncome" onclick="toggleFilter('income')" title="סינון">
@@ -1318,6 +1356,7 @@
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
                         </button>
                     </div>
+                    <div class="card-summary-collapsed" id="expenseCollapsedSummary"></div>
                     <div class="header-actions">
                         <div class="dropdown-container">
                             <button class="filter-btn" id="filterBtnExpense" onclick="toggleFilter('expense')" title="סינון">
@@ -1366,6 +1405,7 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
                     </button>
                 </div>
+                <div class="card-summary-collapsed" id="loansCollapsedSummary"></div>
             </div>
             <div class="card-body" id="loansSummaryCardBody">
                 <div id="loansSummaryContent">
@@ -1417,6 +1457,7 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
                     </button>
                 </div>
+                <div class="card-summary-collapsed" id="summaryCollapsedSummary"></div>
             </div>
             
             <div class="card-body" id="summaryCardBody">
@@ -1687,6 +1728,8 @@
             const loanTransactions = transactions.expenses.filter(t => t.type === 'loan');
             const loansContent = document.getElementById('loansSummaryContent');
             const noLoansMessage = document.getElementById('noLoansMessage');
+            
+            const totalAmount = loanTransactions.reduce((sum, t) => sum + (t.originalLoanAmount || 0), 0);
 
             if (loanTransactions.length === 0) {
                 if(loansContent) loansContent.style.display = 'none';
@@ -1695,6 +1738,8 @@
                 document.getElementById('monthlyLoanPayment').textContent = `₪0.00`;
                 document.getElementById('totalLoanAmount').textContent = `₪0.00`;
                 document.getElementById('remainingLoanBalance').textContent = `₪0.00`;
+                 document.getElementById('loansCollapsedSummary').innerHTML = `<span class="summary-label">אין הלוואות פעילות</span>`;
+
                 return;
             }
 
@@ -1705,7 +1750,6 @@
 
             const monthlyPayment = loanTransactions.reduce((sum, t) => sum + t.amount, 0);
 
-            const totalAmount = loanTransactions.reduce((sum, t) => sum + (t.originalLoanAmount || 0), 0);
 
             const remainingBalance = loanTransactions.reduce((sum, t) => {
                 const paidAmount = t.amount * t.loanCurrent;
@@ -1717,6 +1761,8 @@
             document.getElementById('monthlyLoanPayment').textContent = `₪${monthlyPayment.toLocaleString('he-IL', {minimumFractionDigits: 2})}`;
             document.getElementById('totalLoanAmount').textContent = `₪${totalAmount.toLocaleString('he-IL', {minimumFractionDigits: 2})}`;
             document.getElementById('remainingLoanBalance').textContent = `₪${remainingBalance.toLocaleString('he-IL', {minimumFractionDigits: 2})}`;
+             document.getElementById('loansCollapsedSummary').innerHTML = `<span class="summary-label">סך הלוואות:</span> <span class="summary-value">₪${totalAmount.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>`;
+
         }
 
         function updateBalanceIndicator() {
@@ -1742,8 +1788,8 @@
                 incomeRatio = totalIncome / total;
             }
             
-            // Position from the left. High income ratio = closer to 100% (right/green side)
-            indicator.style.left = `${incomeRatio * 100}%`;
+            // Position from the left. High income ratio = closer to 0% (left/green side)
+            indicator.style.left = `${(1-incomeRatio) * 100}%`;
         }
 
 
@@ -1785,11 +1831,17 @@
         }
 
         function loadFilters() {
-            const savedIncomeFilter = localStorage.getItem('incomeFilter') || 'all';
-            const savedExpenseFilter = localStorage.getItem('expenseFilter') || 'all';
+            filterIncome = localStorage.getItem('incomeFilter') || 'all';
+            filterExpense = localStorage.getItem('expenseFilter') || 'all';
 
-            setFilter('income', savedIncomeFilter, false); // Don't re-render yet
-            setFilter('expense', savedExpenseFilter, false); // Don't re-render yet
+            document.querySelectorAll('#filterDropdownIncome .filter-option').forEach(opt => {
+                if(opt.dataset.filter === filterIncome) opt.classList.add('selected');
+                else opt.classList.remove('selected');
+            });
+            document.querySelectorAll('#filterDropdownExpense .filter-option').forEach(opt => {
+                if(opt.dataset.filter === filterExpense) opt.classList.add('selected');
+                else opt.classList.remove('selected');
+            });
         }
 
 
@@ -1841,6 +1893,7 @@
                         }
                     }
                 }
+                 updateLoansSummary();
             }
         }
 
@@ -1853,7 +1906,7 @@
         }
 
         function setFilter(type, filter, shouldRender = true) {
-            let dropdownId, btnId, filterVar;
+            let dropdownId, btnId;
             if (type === 'income') {
                 filterIncome = filter;
                 dropdownId = 'filterDropdownIncome';
@@ -2410,6 +2463,8 @@
 
             const incomeTotal = filteredIncome.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
             const expenseTotal = filteredExpenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
+            const finalBalance = (currentBalanceValue || 0) - expenseTotal + incomeTotal;
+
 
             let incomeLabelText = 'סה״כ הכנסות';
             switch (filterIncome) {
@@ -2430,6 +2485,7 @@
                     break;
             }
             document.getElementById('incomeTotalLabel').textContent = incomeLabelText;
+            document.getElementById('incomeCollapsedSummary').innerHTML = `<span class="summary-label">${incomeLabelText}:</span> <span class="summary-value">₪${incomeTotal.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>`;
 
             let expenseLabelText = 'סה״כ הוצאות';
             switch (filterExpense) {
@@ -2453,6 +2509,12 @@
                     break;
             }
             document.getElementById('expenseTotalLabel').textContent = expenseLabelText;
+            document.getElementById('expenseCollapsedSummary').innerHTML = `<span class="summary-label">${expenseLabelText}:</span> <span class="summary-value">₪${expenseTotal.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>`;
+
+            
+            const finalBalanceValueString = `₪${finalBalance.toLocaleString('he-IL', {minimumFractionDigits: 2})}`;
+            const finalBalanceClass = finalBalance >= 0 ? 'positive' : 'negative';
+            document.getElementById('summaryCollapsedSummary').innerHTML = `<span class="summary-label">עו"ש סופי:</span> <span class="summary-value ${finalBalanceClass}">${finalBalanceValueString}</span>`;
 
 
             document.getElementById('incomeTotal').textContent = 
@@ -2496,8 +2558,8 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             loadTheme();
-            loadCardStates();
             loadData();
+            loadCardStates();
 
             document.querySelectorAll('.filter-option').forEach(option => {
                 option.addEventListener('click', (e) => {
@@ -2557,11 +2619,11 @@
         }
 
         function toggleCard(button, cardName) {
-            const body = document.getElementById(cardName + 'CardBody');
-            body.classList.toggle('collapsed');
+            const card = button.closest('.card');
+            card.classList.toggle('is-collapsed');
             button.classList.toggle('collapsed');
 
-            if (body.classList.contains('collapsed')) {
+            if (card.classList.contains('is-collapsed')) {
                 localStorage.setItem(cardName + 'CardState', 'collapsed');
             } else {
                 localStorage.setItem(cardName + 'CardState', 'expanded');
@@ -2573,9 +2635,9 @@
             cards.forEach(cardName => {
                 const savedState = localStorage.getItem(cardName + 'CardState');
                 if (savedState === 'collapsed') {
-                    const body = document.getElementById(cardName + 'CardBody');
-                    const button = body.closest('.card').querySelector('.collapse-btn');
-                    if (body) body.classList.add('collapsed');
+                    const card = document.querySelector('.'+cardName.replace('Summary', '-summary')+'-card');
+                    const button = card.querySelector('.collapse-btn');
+                    if (card) card.classList.add('is-collapsed');
                     if (button) button.classList.add('collapsed');
                 }
             });
