@@ -896,52 +896,39 @@ function render() {
     const expenseTotal = filteredExpenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const finalBalance = (currentBalanceValue || 0) - expenseTotal + incomeTotal;
 
-
+    // --- Summary for Expanded View Footer (uses filtered totals) ---
     let incomeLabelText = 'סה״כ הכנסות';
     switch (filterIncome) {
-        case 'regular':
-            incomeLabelText = 'סה״כ קבועות';
-            break;
-        case 'variable':
-            incomeLabelText = 'סה״כ כ.אשראי';
-            break;
-        case 'onetime':
-            incomeLabelText = 'סה״כ חד-פעמיות';
-            break;
-        case 'active':
-            incomeLabelText = 'סה״כ פעילות';
-            break;
-        case 'inactive':
-            incomeLabelText = 'סה״כ לא פעילות';
-            break;
+        case 'regular': incomeLabelText = 'סה״כ קבועות'; break;
+        case 'variable': incomeLabelText = 'סה״כ כ.אשראי'; break;
+        case 'onetime': incomeLabelText = 'סה״כ חד-פעמיות'; break;
+        case 'active': incomeLabelText = 'סה״כ פעילות'; break;
+        case 'inactive': incomeLabelText = 'סה״כ לא פעילות'; break;
     }
     document.getElementById('incomeTotalLabel').textContent = incomeLabelText;
-    document.getElementById('incomeCollapsedSummary').innerHTML = `<span class="summary-label">${incomeLabelText}:</span> <span class="summary-value">₪${incomeTotal.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>`;
 
     let expenseLabelText = 'סה״כ הוצאות';
     switch (filterExpense) {
-        case 'regular':
-            expenseLabelText = 'סה״כ קבועות';
-            break;
-        case 'variable':
-            expenseLabelText = 'סה״כ כ.אשראי';
-            break;
-        case 'onetime':
-            expenseLabelText = 'סה״כ חד-פעמיות';
-            break;
-        case 'loan':
-            expenseLabelText = 'סה״כ הלוואות';
-            break;
-        case 'active':
-            expenseLabelText = 'סה״כ פעילות';
-            break;
-        case 'inactive':
-            expenseLabelText = 'סה״כ לא פעילות';
-            break;
+        case 'regular': expenseLabelText = 'סה״כ קבועות'; break;
+        case 'variable': expenseLabelText = 'סה״כ כ.אשראי'; break;
+        case 'onetime': expenseLabelText = 'סה״כ חד-פעמיות'; break;
+        case 'loan': expenseLabelText = 'סה״כ הלוואות'; break;
+        case 'active': expenseLabelText = 'סה״כ פעילות'; break;
+        case 'inactive': expenseLabelText = 'סה״כ לא פעילות'; break;
     }
     document.getElementById('expenseTotalLabel').textContent = expenseLabelText;
-    document.getElementById('expenseCollapsedSummary').innerHTML = `<span class="summary-label">${expenseLabelText}:</span> <span class="summary-value">₪${expenseTotal.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>`;
 
+    // --- Summary for Collapsed View (always shows total of *active* items, ignoring filters) ---
+    const totalActiveIncome = transactions.income
+        .filter(t => t.checked)
+        .reduce((sum, t) => sum + t.amount, 0);
+
+    const totalActiveExpenses = transactions.expenses
+        .filter(t => t.checked)
+        .reduce((sum, t) => sum + t.amount, 0);
+
+    document.getElementById('incomeCollapsedSummary').innerHTML = `<span class="summary-label">סה״כ הכנסות:</span> <span class="summary-value">₪${totalActiveIncome.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>`;
+    document.getElementById('expenseCollapsedSummary').innerHTML = `<span class="summary-label">סה״כ הוצאות:</span> <span class="summary-value">₪${totalActiveExpenses.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>`;
     
     const finalBalanceValueString = `₪${finalBalance.toLocaleString('he-IL', {minimumFractionDigits: 2})}`;
     const finalBalanceClass = finalBalance >= 0 ? 'positive' : 'negative';
