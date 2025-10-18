@@ -209,19 +209,28 @@
             </div>
             
             <div class="card-body" id="summaryCardBody">
-                <div class="summary-row">
-                    <div class="summary-row-label">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12a10 10 0 1 0 20 0 10 10 0 0 0-20 0Z"/><path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z"/></svg>
-                        עו״ש נוכחי
-                    </div>
-                    <input type="number" 
-                           class="summary-input" 
-                           id="currentBalanceInput" 
-                           placeholder="0.00" 
-                           step="0.01"
-                           oninput="updateSummary()">
-                </div>
-
+<div class="summary-row balance-control-row">
+    <div class="summary-row-label">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12a10 10 0 1 0 20 0 10 10 0 0 0-20 0Z"/><path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z"/></svg>
+        עו״ש נוכחי
+    </div>
+    <div class="balance-control-wrapper">
+        <button class="balance-control-btn" id="decrementBtn" title="הפחת">-</button>
+        <input type="number" 
+               class="balance-control-input" 
+               id="currentBalanceInput" 
+               placeholder="0.00" 
+               step="0.01"
+               oninput="updateSummary()">
+        <button class="balance-control-btn" id="incrementBtn" title="הוסף">+</button>
+    </div>
+    <div class="balance-step-selector" id="balanceStepSelector">
+        <button class="step-btn" data-step="10">10</button>
+        <button class="step-btn" data-step="50">50</button>
+        <button class="step-btn active" data-step="100">100</button>
+        <button class="step-btn" data-step="1000">1000</button>
+    </div>
+</div>
                 <div class="summary-row">
                     <div class="summary-row-label">
                         <svg xmlns="http://www.w3.org/2000/svg" class="negative" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>

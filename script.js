@@ -990,6 +990,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadTheme();
     loadData();
     loadCardStates();
+    setupBalanceControls();
 
     document.querySelectorAll('.filter-option').forEach(option => {
         option.addEventListener('click', (e) => {
@@ -1046,6 +1047,36 @@ function openConfirmModal(title, text, onConfirm) {
 
 function closeConfirmModal() {
     document.getElementById('confirmModal').classList.remove('active');
+}
+
+function setupBalanceControls() {
+    let currentStep = 100;
+    const balanceInput = document.getElementById('currentBalanceInput');
+    const incrementBtn = document.getElementById('incrementBtn');
+    const decrementBtn = document.getElementById('decrementBtn');
+    const stepSelector = document.getElementById('balanceStepSelector');
+
+    function updateBalance(amount) {
+        let currentValue = parseFloat(balanceInput.value) || 0;
+        balanceInput.value = currentValue + amount;
+        updateSummary(); // Trigger a summary update
+    }
+
+    incrementBtn.addEventListener('click', () => {
+        updateBalance(currentStep);
+    });
+
+    decrementBtn.addEventListener('click', () => {
+        updateBalance(-currentStep);
+    });
+
+    stepSelector.addEventListener('click', (e) => {
+        if (e.target.classList.contains('step-btn')) {
+            stepSelector.querySelector('.active').classList.remove('active');
+            e.target.classList.add('active');
+            currentStep = parseInt(e.target.dataset.step, 10);
+        }
+    });
 }
 
 function toggleCard(button, cardName) {

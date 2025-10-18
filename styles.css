@@ -1313,3 +1313,121 @@ input[type="file"] {
 [data-theme="dark"] .credit-card-icon {
     color: #fef9c3; /* צבע תואם לתגית במצב כהה */
 }
+
+/* Balance Control Component */
+.balance-control-row {
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding-top: 24px;
+    padding-bottom: 24px;
+}
+
+.balance-control-row .summary-row-label {
+    width: 100%;
+    justify-content: center;
+    font-size: 1.1em;
+    margin-bottom: 8px;
+}
+
+.balance-control-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.balance-control-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    background: var(--item-bg);
+    color: var(--text-primary);
+    font-size: 28px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.balance-control-btn:hover {
+    border-color: #667eea;
+    background: #eef2ff;
+    color: #4f46e5;
+    transform: scale(1.05);
+}
+
+[data-theme="dark"] .balance-control-btn:hover {
+    background: #4338ca;
+    color: white;
+}
+
+.balance-control-btn:active {
+    transform: scale(0.98);
+}
+
+.balance-control-input {
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--text-primary);
+    background: transparent;
+    border: none;
+    text-align: center;
+    width: 200px;
+    padding: 0;
+}
+
+.balance-control-input:focus {
+    outline: none;
+}
+
+/* Hide spinner arrows on number input */
+.balance-control-input::-webkit-outer-spin-button,
+.balance-control-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.balance-control-input[type=number] {
+    -moz-appearance: textfield;
+}
+
+.balance-step-selector {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.step-btn {
+    padding: 6px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    border: 2px solid var(--border-color);
+    border-radius: 9999px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.step-btn:hover {
+    border-color: #667eea;
+    color: #4f46e5;
+}
+
+.step-btn.active {
+    background: #667eea;
+    border-color: #667eea;
+    color: white;
+    font-weight: 700;
+}
+
+/* Remove old summary input style */
+.summary-input {
+    display: none;
+}
