@@ -175,7 +175,7 @@ function updateLoansSummary() {
     document.getElementById('monthlyLoanPayment').textContent = `₪${monthlyPayment.toLocaleString('he-IL', {minimumFractionDigits: 2})}`;
     document.getElementById('totalLoanAmount').textContent = `₪${totalAmount.toLocaleString('he-IL', {minimumFractionDigits: 2})}`;
     document.getElementById('remainingLoanBalance').textContent = `₪${remainingBalance.toLocaleString('he-IL', {minimumFractionDigits: 2})}`;
-     document.getElementById('loansCollapsedSummary').innerHTML = `<span class="summary-label">סך הלוואות:</span> <span class="summary-value">₪${totalAmount.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>`;
+     document.getElementById('loansCollapsedSummary').innerHTML = `<span class="summary-label">יתרה לתשלום:</span> <span class="summary-value">₪${remainingBalance.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>`;
 
 }
 
@@ -330,6 +330,18 @@ function setFilter(type, filter, shouldRender = true) {
         dropdownId = 'filterDropdownExpense';
         btnId = 'filterBtnExpense';
     }
+    
+// --- הוספה חדשה: נטרול מצב מיון בעת שינוי פילטר ---
+    if (type === 'income' && sortModeIncome) {
+        sortModeIncome = false;
+        const btn = document.getElementById('sortBtnIncome');
+        if (btn) btn.classList.remove('active');
+    } else if (type === 'expense' && sortModeExpense) {
+        sortModeExpense = false;
+        const btn = document.getElementById('sortBtnExpense');
+        if (btn) btn.classList.remove('active');
+    }
+    // --- סוף הוספה חדשה ---
 
     localStorage.setItem(`${type}Filter`, filter);
 
