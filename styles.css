@@ -1431,3 +1431,31 @@ input[type="file"] {
 .summary-input {
     display: none;
 }
+
+/* --- Fixes for Balance Control --- */
+
+/* 1. Center step buttons on all screen sizes */
+.balance-step-selector {
+    justify-content: center;
+}
+
+/* 2. Style for the dynamic border */
+.balance-control-input {
+    border: 2px solid transparent; /* Default transparent border */
+    border-radius: 12px;
+    padding: 4px 12px;
+    transition: border-color 0.3s ease; /* Smooth transition for color change */
+}
+
+.balance-control-input.positive-balance {
+    border-color: #10b981; /* Green border for positive values */
+}
+
+.balance-control-input.negative-balance {
+    border-color: #ef4444; /* Red border for negative values */
+}
+
+/* 3. Prevent double-tap zoom on iOS/Safari */
+.balance-control-btn {
+    touch-action: manipulation;
+}

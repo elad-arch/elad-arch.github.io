@@ -105,6 +105,15 @@ function saveData() {
 function updateSummary() {
     const input = document.getElementById('currentBalanceInput');
     currentBalanceValue = parseFloat(input.value) || 0;
+
+    // --- NEW: Logic for dynamic border ---
+    input.classList.remove('positive-balance', 'negative-balance');
+    if (currentBalanceValue > 0) {
+        input.classList.add('positive-balance');
+    } else if (currentBalanceValue < 0) {
+        input.classList.add('negative-balance');
+    }
+    // --- END NEW ---
     
     const incomeTotal = transactions.income.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const expenseTotal = transactions.expenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
