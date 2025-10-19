@@ -1459,3 +1459,111 @@ input[type="file"] {
 .balance-control-btn {
     touch-action: manipulation;
 }
+
+/* --- New Summary Blocks & Mobile Fixes --- */
+
+/* 1. New Grid Layout for Final Summary */
+.final-summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    padding-top: 20px;
+    margin-bottom: 12px;
+}
+
+.summary-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px;
+    background: var(--item-bg);
+    border-radius: 12px;
+}
+
+.summary-block-label {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.summary-block-label .positive { color: #10b981; }
+.summary-block-label .negative { color: #ef4444; }
+
+.summary-block-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.summary-block-value.positive {
+    color: #10b981;
+}
+
+.summary-block-value.negative {
+    color: #ef4444;
+}
+
+/* 2. Fix for mobile centering */
+@media (max-width: 768px) {
+    /* This makes the new summary blocks stack vertically */
+    .final-summary-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    /* This forces the current balance row to center its content on mobile, fixing the step buttons alignment */
+    .summary-card .balance-control-row {
+        align-items: center;
+    }
+}
+
+/* --- Inline Amount Editing Styles --- */
+
+.transaction-amount {
+    position: relative; /* Needed for positioning the input correctly */
+    cursor: pointer; /* Indicates the amount is clickable */
+    padding: 6px 10px;
+    border-radius: 8px;
+    transition: background-color 0.2s ease;
+}
+
+.transaction-amount:hover {
+    background-color: var(--item-hover);
+}
+
+.inline-edit-input {
+    display: none; /* Hidden by default */
+    width: 120px;
+    font-size: 18px;
+    font-weight: 700;
+    text-align: left;
+    direction: ltr;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 2px solid #667eea;
+    background-color: var(--card-bg);
+}
+
+.income-card .inline-edit-input {
+    color: #10b981;
+}
+
+.expense-card .inline-edit-input {
+    color: #ef4444;
+}
+
+.inline-edit-input:focus {
+    outline: none;
+}
+
+/* When in editing mode, hide the text and show the input */
+.transaction-amount.editing .amount-text {
+    display: none;
+}
+.transaction-amount.editing .inline-edit-input {
+    display: inline-block;
+}

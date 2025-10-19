@@ -106,14 +106,12 @@ function updateSummary() {
     const input = document.getElementById('currentBalanceInput');
     currentBalanceValue = parseFloat(input.value) || 0;
 
-    // --- NEW: Logic for dynamic border ---
     input.classList.remove('positive-balance', 'negative-balance');
     if (currentBalanceValue > 0) {
         input.classList.add('positive-balance');
     } else if (currentBalanceValue < 0) {
         input.classList.add('negative-balance');
     }
-    // --- END NEW ---
     
     const incomeTotal = transactions.income.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const expenseTotal = transactions.expenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
@@ -123,11 +121,13 @@ function updateSummary() {
     
     const afterExpensesEl = document.getElementById('balanceAfterExpenses');
     afterExpensesEl.textContent = '₪' + balanceAfterExpenses.toLocaleString('he-IL', {minimumFractionDigits: 2});
-    afterExpensesEl.className = 'summary-row-value ' + (balanceAfterExpenses >= 0 ? 'positive' : 'negative');
+    // --- CHANGE: Updated class name ---
+    afterExpensesEl.className = 'summary-block-value ' + (balanceAfterExpenses >= 0 ? 'positive' : 'negative');
     
     const finalBalanceEl = document.getElementById('finalBalance');
     finalBalanceEl.textContent = '₪' + finalBalance.toLocaleString('he-IL', {minimumFractionDigits: 2});
-    finalBalanceEl.className = 'summary-row-value ' + (finalBalance >= 0 ? 'positive' : 'negative');
+    // --- CHANGE: Updated class name ---
+    finalBalanceEl.className = 'summary-block-value ' + (finalBalance >= 0 ? 'positive' : 'negative');
     
     const summaryCard = document.querySelector('.summary-card');
     summaryCard.classList.remove('alert-danger', 'alert-warning', 'alert-success');
@@ -682,6 +682,63 @@ function toggleCheck(event, type, index) {
     render();
 }
 
+let currentEditingElement = null;
+
+function editAmount(event, type, index) {
+    event.stopPropagation(); // Prevent other clicks from firing
+
+    // If we were editing something else, save it first
+    if (currentEditingElement && currentEditingElement !== event.currentTarget) {
+        currentEditingElement.querySelector('.inline-edit-input').blur();
+    }
+
+    const amountWrapper = event.currentTarget;
+    const amountInput = amountWrapper.querySelector('.inline-edit-input');
+    const transaction = (type === 'income') ? transactions.income[index] : transactions.expenses[index];
+
+    currentEditingElement = amountWrapper;
+    amountWrapper.classList.add('editing');
+    amountInput.value = transaction.amount;
+    amountInput.focus();
+    amountInput.select();
+}
+
+function saveAmount(event, type, index) {
+    const input = event.target;
+    const newAmount = parseFloat(input.value);
+    
+    if (currentEditingElement) {
+       currentEditingElement.classList.remove('editing');
+       currentEditingElement = null;
+    }
+
+    if (isNaN(newAmount) || newAmount < 0) {
+        render(); // If input is invalid, just re-render to revert
+        return;
+    }
+    
+    if (type === 'income') {
+        transactions.income[index].amount = newAmount;
+    } else {
+        transactions.expenses[index].amount = newAmount;
+    }
+
+    saveData();
+    render();
+}
+
+function handleEditKeys(event) {
+    if (event.key === 'Enter') {
+        event.target.blur(); // Trigger save
+    } else if (event.key === 'Escape') {
+        currentEditingElement.classList.remove('editing');
+        currentEditingElement = null;
+        // No save, just revert UI by doing nothing (blur will re-render)
+        event.target.value = -1; // Invalidate to prevent saving on blur
+        event.target.blur();
+    }
+}
+
 function render() {
     let filteredIncome = transactions.income;
     if (filterIncome === 'active') {
@@ -763,7 +820,10 @@ function render() {
                         ${loanDetails}
                     </div>
                 </div>
-                <div class="transaction-amount">₪${t.amount.toLocaleString('he-IL', {minimumFractionDigits: 2})}</div>
+                <div class="transaction-amount" onclick="editAmount(event, '${'income'}', ${i})">
+                    <span class="amount-text">₪${t.amount.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>
+                    <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, '${'income'}', ${i})">
+                </div>
                 <div class="item-controls">
                     <div class="sort-buttons ${sortModeIncome ? 'visible' : ''}">
                         <button class="sort-btn" onclick="moveItem(event, 'income', ${i}, 'up')" ${i === 0 ? 'disabled' : ''} title="הזז למעלה"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
@@ -878,7 +938,10 @@ function render() {
                         ${loanDetails}
                     </div>
                 </div>
-                <div class="transaction-amount">₪${t.amount.toLocaleString('he-IL', {minimumFractionDigits: 2})}</div>
+                <div class="transaction-amount" onclick="editAmount(event, '${'expense'}', ${i})">
+                    <span class="amount-text">₪${t.amount.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>
+                    <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, '${'expense'}', ${i})">
+                </div>
                 <div class="item-controls">
                     <div class="sort-buttons ${sortModeExpense ? 'visible' : ''}">
                         <button class="sort-btn" onclick="moveItem(event, 'expense', ${i}, 'up')" ${i === 0 ? 'disabled' : ''} title="הזז למעלה"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
