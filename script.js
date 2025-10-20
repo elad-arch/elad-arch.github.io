@@ -696,7 +696,7 @@ function render() {
             const i = transactions.expenses.indexOf(t);
             let badgeClass = 'badge-regular', badgeText = 'קבוע';
             if (t.type === 'loan') { badgeClass = 'badge-loan'; badgeText = 'הלוואה'; }
-            else if (t.type === 'variable') { badgeClass = 'badge-variable'; badgeText = 'כרטיס אשראי'; }
+            else if (t.type === 'variable') { badgeClass = 'badge-variable'; badgeText = 'כרטיס/י אשראי'; }
             else if (t.type === 'onetime') { badgeClass = 'badge-onetime'; badgeText = 'חד-פעמי'; }
             
             const transactionIcon = t.type === 'variable' ? `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>` : '';
