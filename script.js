@@ -450,7 +450,12 @@ function openModal(event, type, index = -1) {
     
     const modal = document.getElementById('transactionModal');
     const title = document.getElementById('modalTitle');
-    const { descriptionInput, amountInput, loanOriginalAmountInput, loanTotalInput, loanCurrentInput } = modal.elements;
+    
+    const descriptionInput = document.getElementById('descriptionInput');
+    const amountInput = document.getElementById('amountInput');
+    const loanOriginalAmountInput = document.getElementById('loanOriginalAmountInput');
+    const loanTotalInput = document.getElementById('loanTotalInput');
+    const loanCurrentInput = document.getElementById('loanCurrentInput');
 
     document.getElementById('typeLoan').classList.toggle('disabled', type === 'income');
     document.getElementById('typeVariable').classList.toggle('disabled', type === 'income');
