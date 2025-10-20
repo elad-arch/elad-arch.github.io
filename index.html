@@ -337,6 +337,41 @@
         </div>
     </div>
     
+    <div class="modal" id="applyOptionsModal">
+    <div class="modal-content">
+        <div class="modal-header" id="applyOptionsModalTitle">החלת תנועה על היתרה</div>
+        <div class="apply-options-details">
+            <p>בחר כיצד להחיל את התנועה:</p>
+            <div class="apply-options-transaction" id="applyOptionsTransactionInfo">
+                </div>
+        </div>
+            <div class="apply-option" data-action="apply-delete">
+                <div class="apply-option-header">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/></svg>
+                    <div class="apply-option-title">החל ומחק</div>
+                </div>
+                <div class="apply-option-desc">הסכום יועבר לעו"ש והתנועה תימחק מהרשימה.</div>
+            </div>
+            <div class="apply-option" data-action="apply-zero">
+                <div class="apply-option-header">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/><path d="M10 20.2L2.5 12.7c-.7-.7-.7-1.8 0-2.5L10 2.5"/><path d="M17.5 7.8c.7-.7 1.8-.7 2.5 0l7.5 7.5c.7.7.7 1.8 0 2.5L17.5 24.2c-.7.7-1.8.7-2.5 0L7.5 16.7c-.7-.7-.7-1.8 0-2.5L15 7.8Z"/></svg>
+                    <div class="apply-option-title">החל ואפס</div>
+                </div>
+                <div class="apply-option-desc">הסכום יועבר לעו"ש וסכום התנועה יתאפס ל-0.</div>
+            </div>
+            <div class="apply-option" data-action="apply-only">
+                <div class="apply-option-header">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/><circle cx="12" cy="12" r="10"/></svg>
+                    <div class="apply-option-title">החל בלבד</div>
+                </div>
+                <div class="apply-option-desc">הסכום יועבר לעו"ש והתנועה תישאר ללא שינוי.</div>
+            </div>
+        <div class="modal-actions">
+            <button class="modal-btn modal-btn-cancel" onclick="closeApplyOptionsModal()">ביטול</button>
+        </div>
+    </div>
+</div>
+
     <script src="script.js"></script>
 </body>
 </html>

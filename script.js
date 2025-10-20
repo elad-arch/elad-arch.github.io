@@ -121,12 +121,10 @@ function updateSummary() {
     
     const afterExpensesEl = document.getElementById('balanceAfterExpenses');
     afterExpensesEl.textContent = '₪' + balanceAfterExpenses.toLocaleString('he-IL', {minimumFractionDigits: 2});
-    // --- CHANGE: Updated class name ---
     afterExpensesEl.className = 'summary-block-value ' + (balanceAfterExpenses >= 0 ? 'positive' : 'negative');
     
     const finalBalanceEl = document.getElementById('finalBalance');
     finalBalanceEl.textContent = '₪' + finalBalance.toLocaleString('he-IL', {minimumFractionDigits: 2});
-    // --- CHANGE: Updated class name ---
     finalBalanceEl.className = 'summary-block-value ' + (finalBalance >= 0 ? 'positive' : 'negative');
     
     const summaryCard = document.querySelector('.summary-card');
@@ -170,10 +168,7 @@ function updateLoansSummary() {
     if(noLoansMessage) noLoansMessage.style.display = 'none';
 
     const activeLoansCount = loanTransactions.filter(t => t.loanCurrent < t.loanTotal).length;
-
     const monthlyPayment = loanTransactions.reduce((sum, t) => sum + t.amount, 0);
-
-
     const remainingBalance = loanTransactions.reduce((sum, t) => {
         const paidAmount = t.amount * t.loanCurrent;
         const remaining = (t.originalLoanAmount || 0) - paidAmount;
@@ -185,18 +180,14 @@ function updateLoansSummary() {
     document.getElementById('totalLoanAmount').textContent = `₪${totalAmount.toLocaleString('he-IL', {minimumFractionDigits: 2})}`;
     document.getElementById('remainingLoanBalance').textContent = `₪${remainingBalance.toLocaleString('he-IL', {minimumFractionDigits: 2})}`;
      document.getElementById('loansCollapsedSummary').innerHTML = `<span class="summary-label">יתרה לתשלום:</span> <span class="summary-value">₪${remainingBalance.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>`;
-
 }
 
 function updateBalanceIndicator() {
     const titleElement = document.querySelector('.header h1');
     const indicator = document.getElementById('balanceIndicator');
-
-    // Use only CHECKED transactions for the main balance indicator
     const totalIncome = transactions.income.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const totalExpenses = transactions.expenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
 
-    // Update title stroke
     titleElement.classList.remove('title-positive-balance', 'title-negative-balance');
     if (totalIncome > totalExpenses) {
         titleElement.classList.add('title-positive-balance');
@@ -204,35 +195,22 @@ function updateBalanceIndicator() {
         titleElement.classList.add('title-negative-balance');
     }
 
-    // Update scale position
     const total = totalIncome + totalExpenses;
-    let incomeRatio = 0.5; // Default to center if no transactions
+    let incomeRatio = 0.5;
     if (total > 0) {
         incomeRatio = totalIncome / total;
     }
     
-    // A higher incomeRatio should move the indicator to the right (green side)
     indicator.style.left = `${incomeRatio * 100}%`;
 }
-
 
 function toggleSortMode(type) {
     if (type === 'income') {
         sortModeIncome = !sortModeIncome;
-        const btn = document.getElementById('sortBtnIncome');
-        if (sortModeIncome) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
+        document.getElementById('sortBtnIncome').classList.toggle('active');
     } else {
         sortModeExpense = !sortModeExpense;
-        const btn = document.getElementById('sortBtnExpense');
-        if (sortModeExpense) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
+        document.getElementById('sortBtnExpense').classList.toggle('active');
     }
     render();
 }
@@ -267,7 +245,6 @@ function loadFilters() {
     });
 }
 
-
 function moveItem(event, type, index, direction) {
     event.stopPropagation();
     const arr = type === 'income' ? transactions.income : transactions.expenses;
@@ -291,7 +268,6 @@ function nextLoanPayment(event, type, index) {
         transaction.loanCurrent++;
         saveData();
 
-        // Update the DOM directly instead of re-rendering the whole list
         const wrapper = event.target.closest('.transaction-wrapper');
         if (wrapper) {
             const progressBarFill = wrapper.querySelector('.progress-bar-fill');
@@ -300,12 +276,8 @@ function nextLoanPayment(event, type, index) {
             const percentage = (transaction.loanCurrent / transaction.loanTotal) * 100;
             const amountPaid = transaction.amount * transaction.loanCurrent;
             
-            if(progressBarFill) {
-                progressBarFill.style.width = `${percentage}%`;
-            }
-            if(progressText) {
-                progressText.textContent = `${transaction.loanCurrent}/${transaction.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו`;
-            }
+            if(progressBarFill) progressBarFill.style.width = `${percentage}%`;
+            if(progressText) progressText.textContent = `${transaction.loanCurrent}/${transaction.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו`;
 
             if (transaction.loanCurrent >= transaction.loanTotal) {
                 const button = event.target.closest('button');
@@ -322,68 +294,39 @@ function nextLoanPayment(event, type, index) {
 
 function toggleFilter(type) {
     const dropdown = document.getElementById(type === 'income' ? 'filterDropdownIncome' : 'filterDropdownExpense');
-    const btn = document.getElementById(type === 'income' ? 'filterBtnIncome' : 'filterBtnExpense');
-    
     dropdown.classList.toggle('active');
-    btn.classList.toggle('active');
 }
 
-function setFilter(type, filter, shouldRender = true) {
-    let dropdownId, btnId;
+function setFilter(type, filter) {
+    let dropdownId;
     if (type === 'income') {
         filterIncome = filter;
         dropdownId = 'filterDropdownIncome';
-        btnId = 'filterBtnIncome';
+        if (sortModeIncome) {
+            sortModeIncome = false;
+            document.getElementById('sortBtnIncome').classList.remove('active');
+        }
     } else {
         filterExpense = filter;
         dropdownId = 'filterDropdownExpense';
-        btnId = 'filterBtnExpense';
+        if (sortModeExpense) {
+            sortModeExpense = false;
+            document.getElementById('sortBtnExpense').classList.remove('active');
+        }
     }
-    
-// --- הוספה חדשה: נטרול מצב מיון בעת שינוי פילטר ---
-    if (type === 'income' && sortModeIncome) {
-        sortModeIncome = false;
-        const btn = document.getElementById('sortBtnIncome');
-        if (btn) btn.classList.remove('active');
-    } else if (type === 'expense' && sortModeExpense) {
-        sortModeExpense = false;
-        const btn = document.getElementById('sortBtnExpense');
-        if (btn) btn.classList.remove('active');
-    }
-    // --- סוף הוספה חדשה ---
 
     localStorage.setItem(`${type}Filter`, filter);
-
-    const dropdown = document.getElementById(dropdownId);
-    const btn = document.getElementById(btnId);
-    if (dropdown) dropdown.classList.remove('active');
-    if (btn) btn.classList.remove('active');
+    document.getElementById(dropdownId).classList.remove('active');
+    document.querySelectorAll(`#${dropdownId} .filter-option`).forEach(opt => opt.classList.remove('selected'));
+    document.querySelector(`#${dropdownId} [data-filter="${filter}"]`).classList.add('selected');
     
-    document.querySelectorAll(`#${dropdownId} .filter-option`).forEach(opt => {
-        opt.classList.remove('selected');
-    });
-
-    const selectedOption = document.querySelector(`#${dropdownId} [data-filter="${filter}"]`);
-    if (selectedOption) {
-        selectedOption.classList.add('selected');
-    }
-    
-    if (shouldRender) {
-        render();
-    }
+    render();
 }
 
 document.addEventListener('click', (e) => {
     if (!e.target.closest('.dropdown-container')) {
-        const incomeDropdown = document.getElementById('filterDropdownIncome');
-        const expenseDropdown = document.getElementById('filterDropdownExpense');
-        if(incomeDropdown) incomeDropdown.classList.remove('active');
-        if(expenseDropdown) expenseDropdown.classList.remove('active');
-
-        const incomeBtn = document.getElementById('filterBtnIncome');
-        const expenseBtn = document.getElementById('filterBtnExpense');
-        if(incomeBtn) incomeBtn.classList.remove('active');
-        if(expenseBtn) expenseBtn.classList.remove('active');
+        document.getElementById('filterDropdownIncome').classList.remove('active');
+        document.getElementById('filterDropdownExpense').classList.remove('active');
     }
 });
 
@@ -422,33 +365,24 @@ function importData(event) {
 
 function showChart(type) {
     const data = type === 'income' ? transactions.income : transactions.expenses;
-    
-    if (data.length === 0) {
-        openConfirmModal('מידע', 'אין נתונים להצגה בגרף.', closeConfirmModal);
-        return;
-    }
-
     const checkedData = data.filter(t => t.checked);
+
     if (checkedData.length === 0) {
-        openConfirmModal('מידע', 'אין פריטים מסומנים להצגה בגרף.', closeConfirmModal);
+        const message = data.length === 0 ? 'אין נתונים להצגה בגרף.' : 'אין פריטים מסומנים להצגה בגרף.';
+        openConfirmModal('מידע', message, closeConfirmModal);
         return;
     }
 
     const modal = document.getElementById('chartModal');
-    const title = document.getElementById('chartModalTitle');
-    
-    title.textContent = type === 'income' ? 'התפלגות הכנסות' : 'התפלגות הוצאות';
+    document.getElementById('chartModalTitle').textContent = type === 'income' ? 'התפלגות הכנסות' : 'התפלגות הוצאות';
     modal.classList.add('active');
 
     const labels = checkedData.map(t => t.description);
     const amounts = checkedData.map(t => t.amount);
     const colors = generateColors(checkedData.length);
-
     const ctx = document.getElementById('pieChart').getContext('2d');
     
-    if (chartInstance) {
-        chartInstance.destroy();
-    }
+    if (chartInstance) chartInstance.destroy();
 
     chartInstance = new Chart(ctx, {
         type: 'pie',
@@ -465,37 +399,19 @@ function showChart(type) {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        padding: 15,
-                        font: {
-                            size: 14
-                        },
-                        color: getComputedStyle(document.body).getPropertyValue('--text-primary')
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            const label = context.label || '';
-                            const value = context.parsed;
-                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                            const percentage = ((value / total) * 100).toFixed(1);
-                            return `${label}: ₪${value.toLocaleString('he-IL')} (${percentage}%)`;
-                        }
-                    }
-                }
+                legend: { position: 'bottom', labels: { padding: 15, font: { size: 14 }, color: getComputedStyle(document.body).getPropertyValue('--text-primary') }},
+                tooltip: { callbacks: { label: function(context) {
+                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                    const percentage = ((context.parsed / total) * 100).toFixed(1);
+                    return `${context.label}: ₪${context.parsed.toLocaleString('he-IL')} (${percentage}%)`;
+                }}}
             }
         }
     });
 }
 
 function generateColors(count) {
-    const colors = [
-        '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6',
-        '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16'
-    ];
+    const colors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16'];
     return colors.slice(0, count);
 }
 
@@ -510,23 +426,12 @@ function closeChartModal() {
 function deleteAllData() {
     const incomeCount = transactions.income.length;
     const expenseCount = transactions.expenses.length;
-    const totalItems = incomeCount + expenseCount;
 
-    if (totalItems === 0) {
-        return;
-    }
+    if (incomeCount + expenseCount === 0) return;
 
-    const message = `אתה עומד למחוק את כל הנתונים לצמיתות.<br><br>` +
-                  `<b>סה"כ למחיקה:</b><br>` +
-                  `• ${incomeCount} הכנסות<br>` +
-                  `• ${expenseCount} הוצאות<br><br>` +
-                  `האם אתה בטוח שברצונך להמשיך?`;
-
+    const message = `אתה עומד למחוק <b>${incomeCount} הכנסות</b> ו-<b>${expenseCount} הוצאות</b> לצמיתות. האם להמשיך?`;
     openConfirmModal('אישור מחיקת כל הנתונים', message, () => {
-        transactions = {
-            income: [],
-            expenses: []
-        };
+        transactions = { income: [], expenses: [] };
         saveData();
         render();
         closeConfirmModal();
@@ -535,11 +440,8 @@ function deleteAllData() {
 
 function openModal(event, type, index = -1) {
     if (typeof event === 'string') {
-        // Handle call from add button like openModal('income')
         type = event;
-        index = -1;
     } else if (event) {
-        // Handle call from edit button like openModal(event, 'income', i)
         event.stopPropagation();
     }
     
@@ -548,30 +450,15 @@ function openModal(event, type, index = -1) {
     
     const modal = document.getElementById('transactionModal');
     const title = document.getElementById('modalTitle');
-    const descInput = document.getElementById('descriptionInput');
-    const amountInput = document.getElementById('amountInput');
-    const loanOriginalAmountInput = document.getElementById('loanOriginalAmountInput');
-    const loanTotalInput = document.getElementById('loanTotalInput');
-    const loanCurrentInput = document.getElementById('loanCurrentInput');
-    const loanBtn = document.getElementById('typeLoan');
-    const variableBtn = document.getElementById('typeVariable');
+    const { descriptionInput, amountInput, loanOriginalAmountInput, loanTotalInput, loanCurrentInput } = modal.elements;
 
-    if (type === 'income') {
-        loanBtn.classList.add('disabled');
-        loanBtn.title = 'הלוואה זמינה רק בהוצאות';
-        variableBtn.classList.add('disabled');
-        variableBtn.title = 'כרטיס אשראי זמין רק בהוצאות';
-    } else {
-        loanBtn.classList.remove('disabled');
-        loanBtn.title = '';
-        variableBtn.classList.remove('disabled');
-        variableBtn.title = '';
-    }
+    document.getElementById('typeLoan').classList.toggle('disabled', type === 'income');
+    document.getElementById('typeVariable').classList.toggle('disabled', type === 'income');
 
     if (index >= 0) {
         const transaction = type === 'income' ? transactions.income[index] : transactions.expenses[index];
         title.textContent = 'עריכת תנועה';
-        descInput.value = transaction.description;
+        descriptionInput.value = transaction.description;
         amountInput.value = transaction.amount;
         selectTransactionType(transaction.type || 'regular');
         
@@ -582,16 +469,12 @@ function openModal(event, type, index = -1) {
         }
     } else {
         title.textContent = type === 'income' ? 'הוספת הכנסה' : 'הוספת הוצאה';
-        descInput.value = '';
-        amountInput.value = '';
-        loanOriginalAmountInput.value = '';
-        loanTotalInput.value = '';
-        loanCurrentInput.value = '';
+        [descriptionInput, amountInput, loanOriginalAmountInput, loanTotalInput, loanCurrentInput].forEach(input => input.value = '');
         selectTransactionType('regular');
     }
 
     modal.classList.add('active');
-    descInput.focus();
+    descriptionInput.focus();
 }
 
 function closeModal() {
@@ -600,33 +483,22 @@ function closeModal() {
 
 function saveTransaction() {
     const description = document.getElementById('descriptionInput').value.trim();
-    const amount = parseFloat(document.getElementById('amountInput').value); // This is now monthly amount
+    const amount = parseFloat(document.getElementById('amountInput').value);
 
     if (!description || !amount || amount <= 0) {
         openConfirmModal('שגיאה', 'נא למלא תיאור וסכום חיובי.', closeConfirmModal);
         return;
     }
 
-    const transaction = {
-        id: Date.now(),
-        description,
-        amount,
-        checked: true,
-        type: selectedTransactionType
-    };
+    const transaction = { id: Date.now(), description, amount, checked: true, type: selectedTransactionType };
 
     if (selectedTransactionType === 'loan') {
         const originalLoanAmount = parseFloat(document.getElementById('loanOriginalAmountInput').value);
         const loanTotal = parseInt(document.getElementById('loanTotalInput').value);
         const loanCurrent = parseInt(document.getElementById('loanCurrentInput').value);
         
-        if (!originalLoanAmount || !loanTotal || Number.isNaN(loanCurrent) || originalLoanAmount <=0 || loanTotal < 1 || loanCurrent < 0 || loanCurrent > loanTotal) {
+        if (!originalLoanAmount || !loanTotal || isNaN(loanCurrent) || originalLoanAmount <=0 || loanTotal < 1 || loanCurrent < 0 || loanCurrent > loanTotal || amount > originalLoanAmount) {
             openConfirmModal('שגיאה', 'נא למלא את כל פרטי ההלוואה באופן תקין.', closeConfirmModal);
-            return;
-        }
-
-        if (amount > originalLoanAmount) {
-            openConfirmModal('שגיאה', 'הסכום החודשי אינו יכול להיות גבוה מסכום ההלוואה המקורי.', closeConfirmModal);
             return;
         }
         
@@ -635,18 +507,11 @@ function saveTransaction() {
         transaction.loanCurrent = loanCurrent;
     }
 
+    const list = currentType === 'income' ? transactions.income : transactions.expenses;
     if (editingIndex >= 0) {
-        if (currentType === 'income') {
-            transactions.income[editingIndex] = { ...transactions.income[editingIndex], ...transaction };
-        } else {
-            transactions.expenses[editingIndex] = { ...transactions.expenses[editingIndex], ...transaction };
-        }
+        list[editingIndex] = { ...list[editingIndex], ...transaction };
     } else {
-        if (currentType === 'income') {
-            transactions.income.push(transaction);
-        } else {
-            transactions.expenses.push(transaction);
-        }
+        list.push(transaction);
     }
 
     saveData();
@@ -657,14 +522,11 @@ function saveTransaction() {
 function deleteTransaction(event, type, index) {
     event.stopPropagation();
     const transaction = type === 'income' ? transactions.income[index] : transactions.expenses[index];
-    const message = `האם אתה בטוח שברצונך למחוק את התנועה?<br><br><b>"${transaction.description}"</b> בסך <b>₪${transaction.amount.toLocaleString('he-IL')}</b>`;
+    const message = `האם למחוק את <b>"${transaction.description}"</b> בסך <b>₪${transaction.amount.toLocaleString('he-IL')}</b>?`;
 
     openConfirmModal('אישור מחיקת תנועה', message, () => {
-         if (type === 'income') {
-            transactions.income.splice(index, 1);
-        } else {
-            transactions.expenses.splice(index, 1);
-        }
+         if (type === 'income') transactions.income.splice(index, 1);
+         else transactions.expenses.splice(index, 1);
         saveData();
         render();
         closeConfirmModal();
@@ -685,12 +547,8 @@ function toggleCheck(event, type, index) {
 let currentEditingElement = null;
 
 function editAmount(event, type, index) {
-    event.stopPropagation(); // Prevent other clicks from firing
-
-    // If we were editing something else, save it first
-    if (currentEditingElement && currentEditingElement !== event.currentTarget) {
-        currentEditingElement.querySelector('.inline-edit-input').blur();
-    }
+    event.stopPropagation();
+    if (currentEditingElement) currentEditingElement.querySelector('.inline-edit-input').blur();
 
     const amountWrapper = event.currentTarget;
     const amountInput = amountWrapper.querySelector('.inline-edit-input');
@@ -712,41 +570,70 @@ function saveAmount(event, type, index) {
        currentEditingElement = null;
     }
 
-    if (isNaN(newAmount) || newAmount < 0) {
-        render(); // If input is invalid, just re-render to revert
-        return;
+    if (!isNaN(newAmount) && newAmount >= 0) {
+        if (type === 'income') transactions.income[index].amount = newAmount;
+        else transactions.expenses[index].amount = newAmount;
     }
     
-    if (type === 'income') {
-        transactions.income[index].amount = newAmount;
-    } else {
-        transactions.expenses[index].amount = newAmount;
-    }
-
     saveData();
     render();
 }
 
 function handleEditKeys(event) {
-    if (event.key === 'Enter') {
-        event.target.blur(); // Trigger save
-    } else if (event.key === 'Escape') {
-        currentEditingElement.classList.remove('editing');
-        currentEditingElement = null;
-        // No save, just revert UI by doing nothing (blur will re-render)
+    if (event.key === 'Enter') event.target.blur();
+    else if (event.key === 'Escape') {
         event.target.value = -1; // Invalidate to prevent saving on blur
         event.target.blur();
     }
 }
 
+function openApplyOptionsModal(type, index) {
+    const transaction = (type === 'income') ? transactions.income[index] : transactions.expenses[index];
+    const modal = document.getElementById('applyOptionsModal');
+    const infoDiv = document.getElementById('applyOptionsTransactionInfo');
+
+    infoDiv.innerHTML = `<span>${transaction.description}</span><span class="${type === 'income' ? 'positive' : 'negative'}">₪${transaction.amount.toLocaleString('he-IL')}</span>`;
+    
+    modal.querySelectorAll('.apply-option').forEach(option => {
+        const newOption = option.cloneNode(true);
+        option.parentNode.replaceChild(newOption, option);
+        newOption.addEventListener('click', () => handleApplyAction(type, index, newOption.dataset.action));
+    });
+
+    modal.classList.add('active');
+}
+
+function handleApplyAction(type, index, action) {
+    const transaction = (type === 'income') ? transactions.income[index] : transactions.expenses[index];
+    const amount = transaction.amount;
+
+    if (type === 'income') currentBalanceValue += amount;
+    else currentBalanceValue -= amount;
+    document.getElementById('currentBalanceInput').value = currentBalanceValue;
+    
+    if (action === 'apply-delete') {
+        if (type === 'income') transactions.income.splice(index, 1);
+        else transactions.expenses.splice(index, 1);
+    } else if (action === 'apply-zero') {
+        if (type === 'income') transactions.income[index].amount = 0;
+        else transactions.expenses[index].amount = 0;
+    }
+
+    saveData();
+    render();
+    closeApplyOptionsModal();
+}
+
+function closeApplyOptionsModal() {
+    document.getElementById('applyOptionsModal').classList.remove('active');
+}
+
 function render() {
     let filteredIncome = transactions.income;
-    if (filterIncome === 'active') {
-        filteredIncome = transactions.income.filter(t => t.checked);
-    } else if (filterIncome === 'inactive') {
-        filteredIncome = transactions.income.filter(t => !t.checked);
-    } else if (filterIncome !== 'all') {
-        filteredIncome = transactions.income.filter(t => t.type === filterIncome);
+    if (filterIncome !== 'all') {
+        if (filterIncome === 'active') filteredIncome = transactions.income.filter(t => t.checked);
+        else if (filterIncome === 'inactive') filteredIncome = transactions.income.filter(t => !t.checked);
+        else filteredIncome = transactions.income.filter(t => t.type === filterIncome);
     }
     
     const incomeList = document.getElementById('incomeList');
@@ -754,117 +641,47 @@ function render() {
         ? '<div class="empty-state">אין הכנסות להצגה</div>'
         : filteredIncome.map((t) => {
             const i = transactions.income.indexOf(t);
-            let badgeClass, badgeText;
-            if (t.type === 'loan') {
-                badgeClass = 'badge-loan';
-                badgeText = 'הלוואה';
-            } else if (t.type === 'variable') {
-                badgeClass = 'badge-variable';
-                badgeText = 'כרטיס אשראי';
-            } else if (t.type === 'onetime') {
-                badgeClass = 'badge-onetime';
-                badgeText = 'חד-פעמי';
-            } else {
-                badgeClass = 'badge-regular';
-                badgeText = 'קבוע';
-            }
+            let badgeClass = 'badge-regular', badgeText = 'קבוע';
+            if (t.type === 'variable') { badgeClass = 'badge-variable'; badgeText = 'כרטיס אשראי'; }
+            else if (t.type === 'onetime') { badgeClass = 'badge-onetime'; badgeText = 'חד-פעמי'; }
             
-            let loanDetails = '';
-            if (t.type === 'loan' && t.originalLoanAmount) {
-                loanDetails = `<div class="loan-original-amount">סכום הלוואה: ₪${t.originalLoanAmount.toLocaleString('he-IL')}</div>`;
-            }
-            
-            let progressBar = '';
-            if (t.type === 'loan' && t.loanTotal && typeof t.loanCurrent === 'number') {
-                const percentage = (t.loanCurrent / t.loanTotal) * 100;
-                const amountPaid = t.amount * t.loanCurrent;
-                const isComplete = t.loanCurrent >= t.loanTotal;
-                progressBar = `
-                    <div class="loan-progress">
-                        <div class="loan-progress-container">
-                            <div class="progress-bar-container">
-                                <div class="progress-bar-fill" style="width: ${percentage}%"></div>
-                            </div>
-                            <div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div>
-                        </div>
-                        <button class="loan-next-payment-btn" 
-                                onclick="nextLoanPayment(event, 'income', ${i})"
-                                ${isComplete ? 'disabled' : ''}
-                                title="${isComplete ? 'ההלוואה שולמה במלואה' : 'הוסף תשלום'}">
-                             ${isComplete 
-                                 ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' 
-                                 : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'
-                             }
-                        </button>
-                    </div>
-                `;
-            }
+            const transactionIcon = t.type === 'variable' ? `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>` : '';
 
-            let transactionIcon = '';
-            if (t.type === 'variable') {
-                transactionIcon = `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>`;
-            }
-
-            const itemHTML = `
-                <div class="transaction-info">
-                    <div class="transaction-check ${t.checked ? 'checked' : ''}" 
-                         onclick="toggleCheck(event, 'income', ${i})">
-                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                    </div>
-                     <div class="transaction-details">
-                        <div class="transaction-text">
-                            ${transactionIcon}
-                            ${t.description}
-                            <span class="transaction-badge ${badgeClass}">${badgeText}</span>
+            return `
+            <div class="transaction-wrapper">
+                <div class="transaction-item ${!t.checked ? 'inactive' : ''}">
+                    <div class="transaction-info">
+                        <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'income', ${i})">
+                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                         </div>
-                        ${loanDetails}
+                         <div class="transaction-details">
+                            <div class="transaction-text">${transactionIcon} ${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
+                        </div>
+                    </div>
+                    <div class="transaction-amount" onclick="editAmount(event, 'income', ${i})">
+                        <span class="amount-text">₪${t.amount.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>
+                        <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'income', ${i})">
+                    </div>
+                    <div class="item-controls">
+                        <div class="sort-buttons ${sortModeIncome ? 'visible' : ''}">
+                            <button class="sort-btn" onclick="moveItem(event, 'income', ${i}, 'up')" ${i === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
+                            <button class="sort-btn" onclick="moveItem(event, 'income', ${i}, 'down')" ${i === transactions.income.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+                        </div>
+                        <div class="transaction-actions">
+                            <button class="action-btn edit" onclick="openModal(event, 'income', ${i})" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+                            <button class="action-btn apply" onclick="openApplyOptionsModal('income', ${i})" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></button>
+                            <button class="action-btn delete" onclick="deleteTransaction(event, 'income', ${i})" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                        </div>
                     </div>
                 </div>
-                <div class="transaction-amount" onclick="editAmount(event, '${'income'}', ${i})">
-                    <span class="amount-text">₪${t.amount.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>
-                    <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, '${'income'}', ${i})">
-                </div>
-                <div class="item-controls">
-                    <div class="sort-buttons ${sortModeIncome ? 'visible' : ''}">
-                        <button class="sort-btn" onclick="moveItem(event, 'income', ${i}, 'up')" ${i === 0 ? 'disabled' : ''} title="הזז למעלה"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
-                        <button class="sort-btn" onclick="moveItem(event, 'income', ${i}, 'down')" ${i === transactions.income.length - 1 ? 'disabled' : ''} title="הזז למטה"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
-                    </div>
-                    <div class="transaction-actions">
-                        <button class="action-btn edit" onclick="openModal(event, 'income', ${i})" title="עריכה">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
-                        </button>
-                        <button class="action-btn delete" onclick="deleteTransaction(event, 'income', ${i})" title="מחיקה">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                        </button>
-                    </div>
-                </div>
-            `;
-            
-            if (t.type === 'loan') {
-                 return `
-                 <div class="transaction-wrapper">
-                    <div class="transaction-item loan-item ${!t.checked ? 'inactive' : ''}" onclick="toggleLoanProgress(this)">
-                        ${itemHTML}
-                    </div>
-                    ${progressBar}
-                </div>`;
-            } else {
-                return `
-                <div class="transaction-wrapper">
-                    <div class="transaction-item ${!t.checked ? 'inactive' : ''}">
-                        ${itemHTML}
-                    </div>
-                </div>`;
-            }
+            </div>`;
         }).join('');
 
     let filteredExpenses = transactions.expenses;
-    if (filterExpense === 'active') {
-        filteredExpenses = transactions.expenses.filter(t => t.checked);
-    } else if (filterExpense === 'inactive') {
-        filteredExpenses = transactions.expenses.filter(t => !t.checked);
-    } else if (filterExpense !== 'all') {
-        filteredExpenses = transactions.expenses.filter(t => t.type === filterExpense);
+    if (filterExpense !== 'all') {
+        if (filterExpense === 'active') filteredExpenses = transactions.expenses.filter(t => t.checked);
+        else if (filterExpense === 'inactive') filteredExpenses = transactions.expenses.filter(t => !t.checked);
+        else filteredExpenses = transactions.expenses.filter(t => t.type === filterExpense);
     }
 
     const expenseList = document.getElementById('expenseList');
@@ -872,186 +689,83 @@ function render() {
         ? '<div class="empty-state">אין הוצאות להצגה</div>'
         : filteredExpenses.map((t) => {
             const i = transactions.expenses.indexOf(t);
-            let badgeClass, badgeText;
-            if (t.type === 'loan') {
-                badgeClass = 'badge-loan';
-                badgeText = 'הלוואה';
-            } else if (t.type === 'variable') {
-                badgeClass = 'badge-variable';
-                badgeText = 'כרטיס אשראי';
-            } else if (t.type === 'onetime') {
-                badgeClass = 'badge-onetime';
-                badgeText = 'חד-פעמי';
-            } else {
-                badgeClass = 'badge-regular';
-                badgeText = 'קבוע';
-            }
+            let badgeClass = 'badge-regular', badgeText = 'קבוע';
+            if (t.type === 'loan') { badgeClass = 'badge-loan'; badgeText = 'הלוואה'; }
+            else if (t.type === 'variable') { badgeClass = 'badge-variable'; badgeText = 'כרטיס אשראי'; }
+            else if (t.type === 'onetime') { badgeClass = 'badge-onetime'; badgeText = 'חד-פעמי'; }
             
-            let loanDetails = '';
-            if (t.type === 'loan' && t.originalLoanAmount) {
-                loanDetails = `<div class="loan-original-amount">סכום הלוואה: ₪${t.originalLoanAmount.toLocaleString('he-IL')}</div>`;
-            }
-            
+            const transactionIcon = t.type === 'variable' ? `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>` : '';
+            const loanDetails = (t.type === 'loan' && t.originalLoanAmount) ? `<div class="loan-original-amount">סכום הלוואה: ₪${t.originalLoanAmount.toLocaleString('he-IL')}</div>` : '';
+
             let progressBar = '';
-            if (t.type === 'loan' && t.loanTotal && typeof t.loanCurrent === 'number') {
+            if (t.type === 'loan' && t.loanTotal) {
                 const percentage = (t.loanCurrent / t.loanTotal) * 100;
                 const amountPaid = t.amount * t.loanCurrent;
                 const isComplete = t.loanCurrent >= t.loanTotal;
                 progressBar = `
                     <div class="loan-progress">
                         <div class="loan-progress-container">
-                            <div class="progress-bar-container">
-                                <div class="progress-bar-fill" style="width: ${percentage}%"></div>
-                            </div>
+                            <div class="progress-bar-container"><div class="progress-bar-fill" style="width: ${percentage}%"></div></div>
                             <div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div>
                         </div>
-                        <button class="loan-next-payment-btn" 
-                                onclick="nextLoanPayment(event, 'expense', ${i})"
-                                ${isComplete ? 'disabled' : ''}
-                                title="${isComplete ? 'ההלוואה שולמה במלואה' : 'הוסף תשלום'}">
-                             ${isComplete 
-                                 ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' 
-                                 : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'
-                             }
+                        <button class="loan-next-payment-btn" onclick="nextLoanPayment(event, 'expense', ${i})" ${isComplete ? 'disabled' : ''}>
+                             ${isComplete ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'}
                         </button>
-                    </div>
-                `;
-            }
-            
-            let transactionIcon = '';
-            if (t.type === 'variable') {
-                transactionIcon = `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>`;
+                    </div>`;
             }
 
             const itemHTML = `
-                <div class="transaction-info">
-                    <div class="transaction-check ${t.checked ? 'checked' : ''}" 
-                         onclick="toggleCheck(event, 'expense', ${i})">
-                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                    </div>
-                    <div class="transaction-details">
-                        <div class="transaction-text">
-                            ${transactionIcon}
-                            ${t.description}
-                            <span class="transaction-badge ${badgeClass}">${badgeText}</span>
+                <div class="transaction-item ${t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''}" ${t.type === 'loan' ? `onclick="toggleLoanProgress(this)"` : ''}>
+                    <div class="transaction-info">
+                        <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'expense', ${i})">
+                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                         </div>
-                        ${loanDetails}
+                        <div class="transaction-details">
+                            <div class="transaction-text">${transactionIcon} ${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
+                            ${loanDetails}
+                        </div>
                     </div>
-                </div>
-                <div class="transaction-amount" onclick="editAmount(event, '${'expense'}', ${i})">
-                    <span class="amount-text">₪${t.amount.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>
-                    <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, '${'expense'}', ${i})">
-                </div>
-                <div class="item-controls">
-                    <div class="sort-buttons ${sortModeExpense ? 'visible' : ''}">
-                        <button class="sort-btn" onclick="moveItem(event, 'expense', ${i}, 'up')" ${i === 0 ? 'disabled' : ''} title="הזז למעלה"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
-                        <button class="sort-btn" onclick="moveItem(event, 'expense', ${i}, 'down')" ${i === transactions.expenses.length - 1 ? 'disabled' : ''} title="הזז למטה"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+                    <div class="transaction-amount" onclick="editAmount(event, 'expense', ${i})">
+                        <span class="amount-text">₪${t.amount.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>
+                        <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'expense', ${i})">
                     </div>
-                    <div class="transaction-actions">
-                       <button class="action-btn edit" onclick="openModal(event, 'expense', ${i})" title="עריכה">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
-                        </button>
-                        <button class="action-btn delete" onclick="deleteTransaction(event, 'expense', ${i})" title="מחיקה">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                        </button>
-                    </div>
-                </div>
-            `;
-            
-            if (t.type === 'loan') {
-                 return `
-                 <div class="transaction-wrapper">
-                    <div class="transaction-item loan-item ${!t.checked ? 'inactive' : ''}" onclick="toggleLoanProgress(this)">
-                        ${itemHTML}
-                    </div>
-                    ${progressBar}
-                </div>`;
-            } else {
-                return `
-                <div class="transaction-wrapper">
-                    <div class="transaction-item ${!t.checked ? 'inactive' : ''}">
-                        ${itemHTML}
+                    <div class="item-controls">
+                        <div class="sort-buttons ${sortModeExpense ? 'visible' : ''}">
+                            <button class="sort-btn" onclick="moveItem(event, 'expense', ${i}, 'up')" ${i === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
+                            <button class="sort-btn" onclick="moveItem(event, 'expense', ${i}, 'down')" ${i === transactions.expenses.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+                        </div>
+                        <div class="transaction-actions">
+                            <button class="action-btn edit" onclick="openModal(event, 'expense', ${i})" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+                            <button class="action-btn apply" onclick="openApplyOptionsModal('expense', ${i})" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></button>
+                            <button class="action-btn delete" onclick="deleteTransaction(event, 'expense', ${i})" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                        </div>
                     </div>
                 </div>`;
-            }
+            return `<div class="transaction-wrapper">${itemHTML}${progressBar}</div>`;
         }).join('');
 
     const incomeTotal = filteredIncome.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const expenseTotal = filteredExpenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const finalBalance = (currentBalanceValue || 0) - expenseTotal + incomeTotal;
 
-    // --- Summary for Expanded View Footer (uses filtered totals) ---
-    let incomeLabelText = 'סה״כ הכנסות';
-    switch (filterIncome) {
-        case 'regular': incomeLabelText = 'סה״כ קבועות'; break;
-        case 'variable': incomeLabelText = 'סה״כ כ.אשראי'; break;
-        case 'onetime': incomeLabelText = 'סה״כ חד-פעמיות'; break;
-        case 'active': incomeLabelText = 'סה״כ פעילות'; break;
-        case 'inactive': incomeLabelText = 'סה״כ לא פעילות'; break;
-    }
-    document.getElementById('incomeTotalLabel').textContent = incomeLabelText;
+    const labelMap = { all: 'סה״כ', regular: 'סה״כ קבועות', variable: 'סה״כ כ.אשראי', onetime: 'סה״כ חד-פעמיות', active: 'סה״כ פעילות', inactive: 'סה״כ לא פעילות', loan: 'סה״כ הלוואות' };
+    document.getElementById('incomeTotalLabel').textContent = labelMap[filterIncome] + ' הכנסות';
+    document.getElementById('expenseTotalLabel').textContent = labelMap[filterExpense] + ' הוצאות';
 
-    let expenseLabelText = 'סה״כ הוצאות';
-    switch (filterExpense) {
-        case 'regular': expenseLabelText = 'סה״כ קבועות'; break;
-        case 'variable': expenseLabelText = 'סה״כ כ.אשראי'; break;
-        case 'onetime': expenseLabelText = 'סה״כ חד-פעמיות'; break;
-        case 'loan': expenseLabelText = 'סה״כ הלוואות'; break;
-        case 'active': expenseLabelText = 'סה״כ פעילות'; break;
-        case 'inactive': expenseLabelText = 'סה״כ לא פעילות'; break;
-    }
-    document.getElementById('expenseTotalLabel').textContent = expenseLabelText;
-
-    // --- Summary for Collapsed View (always shows total of *active* items, ignoring filters) ---
-    const totalActiveIncome = transactions.income
-        .filter(t => t.checked)
-        .reduce((sum, t) => sum + t.amount, 0);
-
-    const totalActiveExpenses = transactions.expenses
-        .filter(t => t.checked)
-        .reduce((sum, t) => sum + t.amount, 0);
+    const totalActiveIncome = transactions.income.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
+    const totalActiveExpenses = transactions.expenses.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
 
     document.getElementById('incomeCollapsedSummary').innerHTML = `<span class="summary-label">סה״כ הכנסות:</span> <span class="summary-value">₪${totalActiveIncome.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>`;
     document.getElementById('expenseCollapsedSummary').innerHTML = `<span class="summary-label">סה״כ הוצאות:</span> <span class="summary-value">₪${totalActiveExpenses.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>`;
+    document.getElementById('summaryCollapsedSummary').innerHTML = `<span class="summary-label">עו"ש צפוי:</span> <span class="summary-value ${finalBalance >= 0 ? 'positive' : 'negative'}">₪${finalBalance.toLocaleString('he-IL', {minimumFractionDigits: 2})}</span>`;
+
+    document.getElementById('incomeTotal').textContent = '₪' + incomeTotal.toLocaleString('he-IL', {minimumFractionDigits: 2});
+    document.getElementById('expenseTotal').textContent = '₪' + expenseTotal.toLocaleString('he-IL', {minimumFractionDigits: 2});
     
-    const finalBalanceValueString = `₪${finalBalance.toLocaleString('he-IL', {minimumFractionDigits: 2})}`;
-    const finalBalanceClass = finalBalance >= 0 ? 'positive' : 'negative';
-    document.getElementById('summaryCollapsedSummary').innerHTML = `<span class="summary-label">עו"ש צפוי:</span> <span class="summary-value ${finalBalanceClass}">${finalBalanceValueString}</span>`;
-
-
-    document.getElementById('incomeTotal').textContent = 
-        '₪' + incomeTotal.toLocaleString('he-IL', {minimumFractionDigits: 2});
-    document.getElementById('expenseTotal').textContent = 
-        '₪' + expenseTotal.toLocaleString('he-IL', {minimumFractionDigits: 2});
-    
-    const incomeChartBtn = document.querySelector('.income-card .chart-btn');
-    const incomeSortBtn = document.querySelector('.income-card .sort-mode-btn');
-    const expenseChartBtn = document.querySelector('.expense-card .chart-btn');
-    const expenseSortBtn = document.querySelector('.expense-card .sort-mode-btn');
-
-    if (filterIncome !== 'all') {
-        incomeChartBtn.disabled = true;
-        incomeSortBtn.disabled = true;
-        incomeChartBtn.title = "האפשרות זמינה רק במצב 'הצג הכל'";
-        incomeSortBtn.title = "האפשרות זמינה רק במצב 'הצג הכל'";
-    } else {
-        incomeChartBtn.disabled = false;
-        incomeSortBtn.disabled = false;
-        incomeChartBtn.title = "הצג גרף";
-        incomeSortBtn.title = "סידור";
-    }
-
-    if (filterExpense !== 'all') {
-        expenseChartBtn.disabled = true;
-        expenseSortBtn.disabled = true;
-        expenseChartBtn.title = "האפשרות זמינה רק במצב 'הצג הכל'";
-        expenseSortBtn.title = "האפשרות זמינה רק במצב 'הצג הכל'";
-    } else {
-        expenseChartBtn.disabled = false;
-        expenseSortBtn.disabled = false;
-        expenseChartBtn.title = "הצג גרף";
-        expenseSortBtn.title = "סידור";
-    }
+    document.querySelector('.income-card .chart-btn').disabled = filterIncome !== 'all';
+    document.querySelector('.income-card .sort-mode-btn').disabled = filterIncome !== 'all';
+    document.querySelector('.expense-card .chart-btn').disabled = filterExpense !== 'all';
+    document.querySelector('.expense-card .sort-mode-btn').disabled = filterExpense !== 'all';
     
     updateBalanceIndicator();
     updateLoansSummary();
@@ -1078,22 +792,15 @@ document.addEventListener('DOMContentLoaded', () => {
             closeModal();
             closeChartModal();
             closeConfirmModal();
+            closeApplyOptionsModal();
         }
     });
 
-    document.getElementById('transactionModal').addEventListener('click', (e) => {
-        if (e.target.id === 'transactionModal') closeModal();
-    });
-
-    document.getElementById('chartModal').addEventListener('click', (e) => {
-        if (e.target.id === 'chartModal') closeChartModal();
-    });
-
-    document.getElementById('confirmModal').addEventListener('click', (e) => {
-        if (e.target.id === 'confirmModal') closeConfirmModal();
-    });
+    document.getElementById('transactionModal').addEventListener('click', (e) => { if (e.target.id === 'transactionModal') closeModal(); });
+    document.getElementById('chartModal').addEventListener('click', (e) => { if (e.target.id === 'chartModal') closeChartModal(); });
+    document.getElementById('confirmModal').addEventListener('click', (e) => { if (e.target.id === 'confirmModal') closeConfirmModal(); });
+    document.getElementById('applyOptionsModal').addEventListener('click', (e) => { if (e.target.id === 'applyOptionsModal') closeApplyOptionsModal(); });
 });
-
 
 function openConfirmModal(title, text, onConfirm) {
     document.getElementById('confirmModalTitle').textContent = title;
@@ -1102,17 +809,11 @@ function openConfirmModal(title, text, onConfirm) {
     const confirmBtn = document.getElementById('confirmModalConfirmBtn');
     const newConfirmBtn = confirmBtn.cloneNode(true);
     confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-    
     newConfirmBtn.addEventListener('click', onConfirm);
     
-    if (title === 'שגיאה' || title === 'מידע') {
-         newConfirmBtn.style.display = 'none';
-         document.querySelector('#confirmModal .modal-btn-cancel').textContent = 'סגור';
-    } else {
-         newConfirmBtn.style.display = 'flex';
-         newConfirmBtn.textContent = 'אשר';
-         document.querySelector('#confirmModal .modal-btn-cancel').textContent = 'ביטול';
-    }
+    const isInfo = title === 'שגיאה' || title === 'מידע';
+    newConfirmBtn.style.display = isInfo ? 'none' : 'flex';
+    document.querySelector('#confirmModal .modal-btn-cancel').textContent = isInfo ? 'סגור' : 'ביטול';
 
     document.getElementById('confirmModal').classList.add('active');
 }
@@ -1131,16 +832,11 @@ function setupBalanceControls() {
     function updateBalance(amount) {
         let currentValue = parseFloat(balanceInput.value) || 0;
         balanceInput.value = currentValue + amount;
-        updateSummary(); // Trigger a summary update
+        updateSummary();
     }
 
-    incrementBtn.addEventListener('click', () => {
-        updateBalance(currentStep);
-    });
-
-    decrementBtn.addEventListener('click', () => {
-        updateBalance(-currentStep);
-    });
+    incrementBtn.addEventListener('click', () => updateBalance(currentStep));
+    decrementBtn.addEventListener('click', () => updateBalance(-currentStep));
 
     stepSelector.addEventListener('click', (e) => {
         if (e.target.classList.contains('step-btn')) {
@@ -1155,23 +851,17 @@ function toggleCard(button, cardName) {
     const card = button.closest('.card');
     card.classList.toggle('is-collapsed');
     button.classList.toggle('collapsed');
-
-    if (card.classList.contains('is-collapsed')) {
-        localStorage.setItem(cardName + 'CardState', 'collapsed');
-    } else {
-        localStorage.setItem(cardName + 'CardState', 'expanded');
-    }
+    localStorage.setItem(cardName + 'CardState', card.classList.contains('is-collapsed') ? 'collapsed' : 'expanded');
 }
 
 function loadCardStates() {
-    const cards = ['income', 'expense', 'loansSummary', 'summary'];
-    cards.forEach(cardName => {
-        const savedState = localStorage.getItem(cardName + 'CardState');
-        if (savedState === 'collapsed') {
+    ['income', 'expense', 'loansSummary', 'summary'].forEach(cardName => {
+        if (localStorage.getItem(cardName + 'CardState') === 'collapsed') {
             const card = document.querySelector('.'+cardName.replace('Summary', '-summary')+'-card');
-            const button = card.querySelector('.collapse-btn');
-            if (card) card.classList.add('is-collapsed');
-            if (button) button.classList.add('collapsed');
+            if (card) {
+                card.classList.add('is-collapsed');
+                card.querySelector('.collapse-btn').classList.add('collapsed');
+            }
         }
     });
 }
