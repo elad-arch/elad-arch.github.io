@@ -794,6 +794,22 @@ body {
     
     .transaction-type-selector { flex-wrap: wrap; }
     .type-option { flex-basis: calc(50% - 6px); }
+
+    .balance-control-wrapper {
+    gap: 8px; 
+}
+
+    /* Fix for current balance view on mobile */
+    .balance-control-input {
+        font-size: 32px;
+        width: 100%;
+        max-width: 160px;
+    }
+    .balance-control-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 24px;
+}
 }
 
 input[type="file"] { display: none; }
@@ -822,7 +838,7 @@ input[type="file"] { display: none; }
 /* New Summary Blocks */
 .final-summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding-top: 20px; margin-bottom: 12px; }
 .summary-block { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px; background: var(--item-bg); border-radius: 12px; }
-.summary-block-label { font-size: 15px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
+.summary-block-label { font-size: 1.1em; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
 .summary-block-label .positive { color: #10b981; }
 .summary-block-label .negative { color: #ef4444; }
 .summary-block-value { font-size: 32px; font-weight: 700; color: var(--text-primary); }

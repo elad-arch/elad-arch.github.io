@@ -754,8 +754,8 @@ function render() {
     const finalBalance = (currentBalanceValue || 0) - expenseTotal + incomeTotal;
 
     const labelMap = { all: 'סה״כ', regular: 'סה״כ קבועות', variable: 'סה״כ כ.אשראי', onetime: 'סה״כ חד-פעמיות', active: 'סה״כ פעילות', inactive: 'סה״כ לא פעילות', loan: 'סה״כ הלוואות' };
-    document.getElementById('incomeTotalLabel').textContent = labelMap[filterIncome] + ' הכנסות';
-    document.getElementById('expenseTotalLabel').textContent = labelMap[filterExpense] + ' הוצאות';
+    document.getElementById('incomeTotalLabel').textContent = filterIncome === 'all' ? 'סה״כ הכנסות' : labelMap[filterIncome];
+    document.getElementById('expenseTotalLabel').textContent = filterExpense === 'all' ? 'סה״כ הוצאות' : labelMap[filterExpense];
 
     const totalActiveIncome = transactions.income.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
     const totalActiveExpenses = transactions.expenses.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
