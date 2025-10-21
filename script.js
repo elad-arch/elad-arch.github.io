@@ -36,6 +36,19 @@ function selectTransactionType(type) {
     
     const amountLabel = document.getElementById('amountLabel');
     const loanFields = document.getElementById('loanFields');
+    const descriptionInput = document.getElementById('descriptionInput');
+
+    if (currentType === 'income') {
+        descriptionInput.placeholder = "למשל: משכורת, מתנה";
+    } else { // It's an expense
+        if (type === 'variable') {
+            descriptionInput.placeholder = "למשל: שם הכרטיס (אמקס, ויזה)";
+        } else if (type === 'loan') {
+            descriptionInput.placeholder = "למשל: החזר משכנתא, הלוואת רכב";
+        } else {
+            descriptionInput.placeholder = "למשל: קניות, חשבון חשמל";
+        }
+    }
 
     if (type === 'loan') {
         document.getElementById('typeLoan').classList.add('selected');
@@ -561,9 +574,16 @@ let currentEditingElement = null;
 
 function editAmount(event, type, index) {
     event.stopPropagation();
-    if (currentEditingElement) currentEditingElement.querySelector('.inline-edit-input').blur();
-
     const amountWrapper = event.currentTarget;
+
+    if (amountWrapper.classList.contains('editing')) {
+        return;
+    }
+
+    if (currentEditingElement) {
+        currentEditingElement.querySelector('.inline-edit-input').blur();
+    }
+
     const amountInput = amountWrapper.querySelector('.inline-edit-input');
     const transaction = (type === 'income') ? transactions.income[index] : transactions.expenses[index];
 
@@ -577,18 +597,23 @@ function editAmount(event, type, index) {
 function saveAmount(event, type, index) {
     const input = event.target;
     const newAmount = parseFloat(input.value);
-    
+    const transaction = (type === 'income') ? transactions.income[index] : transactions.expenses[index];
+    const originalAmount = transaction.amount;
+
     if (currentEditingElement) {
        currentEditingElement.classList.remove('editing');
        currentEditingElement = null;
     }
 
-    if (!isNaN(newAmount) && newAmount >= 0) {
-        saveStateForUndo(); // M_UNDO
-        if (type === 'income') transactions.income[index].amount = newAmount;
-        else transactions.expenses[index].amount = newAmount;
+    if (!isNaN(newAmount) && newAmount >= 0 && newAmount !== originalAmount) {
+        saveStateForUndo();
+        if (type === 'income') {
+            transactions.income[index].amount = newAmount;
+        } else {
+            transactions.expenses[index].amount = newAmount;
+        }
     }
-    
+
     saveData();
     render();
 }
@@ -596,7 +621,7 @@ function saveAmount(event, type, index) {
 function handleEditKeys(event) {
     if (event.key === 'Enter') event.target.blur();
     else if (event.key === 'Escape') {
-        event.target.value = -1; // Invalidate to prevent saving on blur
+        event.target.value = -1; 
         event.target.blur();
     }
 }
@@ -674,11 +699,8 @@ function render() {
         : filteredIncome.map((t) => {
             const i = transactions.income.indexOf(t);
             let badgeClass = 'badge-regular', badgeText = 'קבוע';
-            if (t.type === 'variable') { badgeClass = 'badge-variable'; badgeText = 'כרטיס אשראי'; }
-            else if (t.type === 'onetime') { badgeClass = 'badge-onetime'; badgeText = 'חד-פעמי'; }
+            if (t.type === 'onetime') { badgeClass = 'badge-onetime'; badgeText = 'חד-פעמי'; }
             
-            const transactionIcon = t.type === 'variable' ? `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>` : '';
-
             return `
             <div class="transaction-wrapper">
                 <div class="transaction-item ${!t.checked ? 'inactive' : ''}">
@@ -687,7 +709,7 @@ function render() {
                              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                         </div>
                          <div class="transaction-details">
-                            <div class="transaction-text">${transactionIcon} ${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
+                            <div class="transaction-text">${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
                         </div>
                     </div>
                     <div class="transaction-amount" onclick="editAmount(event, 'income', ${i})">
@@ -723,11 +745,18 @@ function render() {
         : filteredExpenses.map((t) => {
             const i = transactions.expenses.indexOf(t);
             let badgeClass = 'badge-regular', badgeText = 'קבוע';
-            if (t.type === 'loan') { badgeClass = 'badge-loan'; badgeText = 'הלוואה'; }
-            else if (t.type === 'variable') { badgeClass = 'badge-variable'; badgeText = 'כרטיס/י אשראי'; }
-            else if (t.type === 'onetime') { badgeClass = 'badge-onetime'; badgeText = 'חד-פעמי'; }
+
+            if (t.type === 'loan') {
+                badgeClass = 'badge-loan';
+                badgeText = 'הלוואה';
+            } else if (t.type === 'variable') { 
+                badgeClass = 'badge-variable'; 
+                badgeText = `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>&nbsp; כרטיס אשראי`; 
+            } else if (t.type === 'onetime') {
+                badgeClass = 'badge-onetime';
+                badgeText = 'חד-פעמי';
+            }
             
-            const transactionIcon = t.type === 'variable' ? `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>` : '';
             const loanDetails = (t.type === 'loan' && t.originalLoanAmount) ? `<div class="loan-original-amount">סכום הלוואה: ₪${t.originalLoanAmount.toLocaleString('he-IL')}</div>` : '';
 
             let progressBar = '';
@@ -754,7 +783,7 @@ function render() {
                              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                         </div>
                         <div class="transaction-details">
-                            <div class="transaction-text">${transactionIcon} ${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
+                            <div class="transaction-text">${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
                             ${loanDetails}
                         </div>
                     </div>

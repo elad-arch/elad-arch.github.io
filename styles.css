@@ -341,23 +341,18 @@ body:not(.preload) .collapse-btn svg {
     flex: 1;
 }
 
-/* === TRANSACTION ITEM STYLES (CLEANED & FIXED) === */
-
-/* 1. The main wrapper for each item in the list */
 .transaction-wrapper {
     display: flex;
-    flex-direction: column; /* Stacks item and progress bar vertically */
+    flex-direction: column;
     background: var(--item-bg);
     border-radius: 12px;
     transition: background-color 0.2s ease;
 }
 
-/* 2. Hover effect is ONLY on the wrapper to prevent stacking highlights */
 .transaction-wrapper:hover {
     background-color: var(--item-hover);
 }
 
-/* 3. The main item content row */
 .transaction-item {
     display: flex;
     justify-content: space-between;
@@ -457,6 +452,10 @@ body:not(.preload) .collapse-btn svg {
 .badge-onetime { background: #e0e7ff; color: #3730a3; }
 .badge-loan { background: #fee2e2; color: #991b1b; }
 .badge-variable { background: #fef9c3; color: #854d0e; }
+
+[data-theme="dark"] .badge-variable {
+    background: #422c0b; color: #fef9c3;
+}
 
 .loan-progress {
     width: 100%;
@@ -583,8 +582,6 @@ body:not(.preload) .collapse-btn svg {
 .action-btn:hover { transform: scale(1.1); }
 .action-btn.edit:hover { background-color: #e0e7ff; color: #4f46e5; }
 .action-btn.delete:hover { background-color: #fee2e2; color: #ef4444; }
-
-/* === END OF TRANSACTION ITEM STYLES === */
 
 .collapse-btn.collapsed svg {
     transform: rotate(-180deg);
@@ -736,7 +733,11 @@ body:not(.preload) .collapse-btn svg {
 
 .transaction-type-selector { display: flex; gap: 12px; margin-bottom: 20px; }
 .type-option { flex: 1; padding: 12px; border: 2px solid var(--border-color); border-radius: 8px; cursor: pointer; text-align: center; transition: all 0.3s; background: var(--card-bg); color: var(--text-primary); font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
-.type-option svg { width: 18px; height: 18px; }
+
+.type-option svg {
+    width: 22px;
+    height: 22px;
+}
 .type-option:hover { border-color: #667eea; }
 .type-option.selected { border-color: #667eea; background: #667eea; color: white; }
 .type-option.disabled { opacity: 0.5; cursor: not-allowed; background: #e5e7eb; border-color: #d1d5db; color: #9ca3af; }
@@ -772,8 +773,6 @@ body:not(.preload) .collapse-btn svg {
 @media (max-width: 768px) {
     .main-grid { grid-template-columns: 1fr; }
     .header h1 { font-size: 1.8em; }
-
-    /* Fix for summary cards on mobile */
     .summary-card .summary-row,
     .loans-summary-card .summary-row {
         flex-direction: column;
@@ -786,23 +785,16 @@ body:not(.preload) .collapse-btn svg {
     .loans-summary-card .summary-row-value {
         width: 100%;
     }
-
     .chart-container { height: 300px; }
-
-    /* Fix for transaction items on mobile */
     .transaction-item { flex-wrap: wrap; row-gap: 8px; }
     .transaction-info { flex-grow: 1; }
     .transaction-amount { margin-left: 0; }
     .item-controls { flex-basis: 100%; justify-content: flex-end; margin-top: 8px; padding-top: 8px; margin-left: 0; border-top: 1px solid var(--border-color); }
-    
     .transaction-type-selector { flex-wrap: wrap; }
     .type-option { flex-basis: calc(50% - 6px); }
-
     .balance-control-wrapper {
-    gap: 8px; 
-}
-
-    /* Fix for current balance view on mobile */
+        gap: 8px; 
+    }
     .balance-control-input {
         font-size: 32px;
         width: 100%;
@@ -812,14 +804,13 @@ body:not(.preload) .collapse-btn svg {
         width: 40px;
         height: 40px;
         font-size: 24px;
-}
+    }
 }
 
 input[type="file"] { display: none; }
 .credit-card-icon { color: #854d0e; flex-shrink: 0; }
 [data-theme="dark"] .credit-card-icon { color: #fef9c3; }
 
-/* Balance Control Component */
 .balance-control-row { flex-direction: column; align-items: center; gap: 16px; padding-top: 24px; padding-bottom: 24px; }
 .balance-control-row .summary-row-label { width: 100%; justify-content: center; font-size: 1.1em; margin-bottom: 8px; }
 .balance-control-wrapper { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; }
@@ -838,7 +829,6 @@ input[type="file"] { display: none; }
 .step-btn:hover { border-color: #667eea; color: #4f46e5; }
 .step-btn.active { background: #667eea; border-color: #667eea; color: white; font-weight: 700; }
 
-/* New Summary Blocks */
 .final-summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding-top: 20px; margin-bottom: 12px; }
 .summary-block { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px; background: var(--item-bg); border-radius: 12px; }
 .summary-block-label { font-size: 1.1em; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
@@ -852,7 +842,6 @@ input[type="file"] { display: none; }
     .summary-card .balance-control-row { align-items: center; }
 }
 
-/* Inline Amount Editing Styles */
 .inline-edit-input { display: none; width: 120px; font-size: 18px; font-weight: 700; text-align: left; direction: ltr; padding: 4px 8px; border-radius: 6px; border: 2px solid #667eea; background-color: var(--card-bg); }
 .income-card .inline-edit-input { color: #10b981; }
 .expense-card .inline-edit-input { color: #ef4444; }
@@ -860,7 +849,6 @@ input[type="file"] { display: none; }
 .transaction-amount.editing .amount-text { display: none; }
 .transaction-amount.editing .inline-edit-input { display: inline-block; }
 
-/* Apply Options Modal (with Icons) */
 .apply-options-details { text-align: center; margin-bottom: 24px; color: var(--text-secondary); }
 .apply-options-transaction { background: var(--item-bg); border-radius: 8px; padding: 12px 16px; margin-top: 12px; display: flex; justify-content: space-between; align-items: center; font-weight: 600; color: var(--text-primary); font-size: 1.1em; }
 .apply-options-transaction .positive { color: #10b981; }
@@ -874,16 +862,13 @@ input[type="file"] { display: none; }
 .apply-option-title { font-size: 1.1em; font-weight: 700; color: var(--text-primary); margin-bottom: 0; }
 .apply-option-desc { font-size: 0.85em; color: var(--text-secondary); }
 
-/* --- Hover Effect for Apply Button --- */
-
 .action-btn.apply:hover {
-    background-color: #dcfce7; /* Light green */
-    color: #16a34a; /* Dark green */
+    background-color: #dcfce7;
+    color: #16a34a;
 }
 
-/* --- Undo Button Styles --- */
 .btn-undo {
-    background: #60a5fa; /* A nice blue color */
+    background: #60a5fa;
     color: white;
     padding: 10px 20px;
     border-radius: 9999px;
@@ -900,4 +885,10 @@ input[type="file"] { display: none; }
 .btn-undo:disabled:hover {
     transform: none;
     box-shadow: none;
+}
+
+.transaction-badge svg.credit-card-icon {
+    margin-left: -2px;
+    margin-right: 4px;
+    vertical-align: -2px;
 }
