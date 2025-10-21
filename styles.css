@@ -38,6 +38,14 @@ body {
     transition: background 0.3s ease;
 }
 
+body:not(.preload) .card-body {
+    transition: max-height 0.4s ease-out, padding 0.4s ease-out, margin 0.4s ease-out;
+}
+
+body:not(.preload) .collapse-btn svg {
+     transition: transform 0.3s ease-in-out;
+}
+
 .container {
     max-width: 1400px;
     margin: 0 auto;
@@ -578,10 +586,6 @@ body {
 
 /* === END OF TRANSACTION ITEM STYLES === */
 
-.collapse-btn svg {
-     transition: transform 0.3s ease-in-out;
-}
-
 .collapse-btn.collapsed svg {
     transform: rotate(-180deg);
 }
@@ -667,7 +671,6 @@ body {
 .loans-summary-card .summary-row:last-of-type { margin-bottom: 0; }
 
 .card-body {
-    transition: max-height 0.4s ease-out, padding 0.4s ease-out, margin 0.4s ease-out;
     overflow: hidden;
     max-height: 2000px;
 }
@@ -841,7 +844,7 @@ input[type="file"] { display: none; }
 .summary-block-label { font-size: 1.1em; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
 .summary-block-label .positive { color: #10b981; }
 .summary-block-label .negative { color: #ef4444; }
-.summary-block-value { font-size: 32px; font-weight: 700; color: var(--text-primary); }
+.summary-block-value { font-size: 36px; font-weight: 700; color: var(--text-primary); }
 .summary-block-value.positive { color: #10b981; }
 .summary-block-value.negative { color: #ef4444; }
 @media (max-width: 768px) {
@@ -876,4 +879,25 @@ input[type="file"] { display: none; }
 .action-btn.apply:hover {
     background-color: #dcfce7; /* Light green */
     color: #16a34a; /* Dark green */
+}
+
+/* --- Undo Button Styles --- */
+.btn-undo {
+    background: #60a5fa; /* A nice blue color */
+    color: white;
+    padding: 10px 20px;
+    border-radius: 9999px;
+    gap: 8px;
+}
+
+.btn-undo:disabled {
+    background: #e5e7eb;
+    color: #9ca3af;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.btn-undo:disabled:hover {
+    transform: none;
+    box-shadow: none;
 }

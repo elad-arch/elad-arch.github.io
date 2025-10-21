@@ -10,6 +10,7 @@ let sortModeIncome = false;
 let sortModeExpense = false;
 let filterIncome = 'all';
 let filterExpense = 'all';
+let previousState = null; // M_UNDO: Variable to hold the last state
 
 function toggleLoanProgress(element) {
     const wrapper = element.closest('.transaction-wrapper');
@@ -246,6 +247,7 @@ function loadFilters() {
 }
 
 function moveItem(event, type, index, direction) {
+    saveStateForUndo(); // M_UNDO
     event.stopPropagation();
     const arr = type === 'income' ? transactions.income : transactions.expenses;
     
@@ -260,6 +262,7 @@ function moveItem(event, type, index, direction) {
 }
 
 function nextLoanPayment(event, type, index) {
+    saveStateForUndo(); // M_UNDO
     event.stopPropagation();
     const transactionList = type === 'income' ? transactions.income : transactions.expenses;
     const transaction = transactionList[index];
@@ -349,6 +352,7 @@ function importData(event) {
             try {
                 const imported = JSON.parse(e.target.result);
                 openConfirmModal('אישור ייבוא נתונים', 'האם לייבא את הנתונים? הנתונים הנוכחיים יוחלפו.', () => {
+                    saveStateForUndo(); // M_UNDO
                     transactions = imported;
                     saveData();
                     render();
@@ -431,6 +435,7 @@ function deleteAllData() {
 
     const message = `אתה עומד למחוק <b>${incomeCount} הכנסות</b> ו-<b>${expenseCount} הוצאות</b> לצמיתות. האם להמשיך?`;
     openConfirmModal('אישור מחיקת כל הנתונים', message, () => {
+        saveStateForUndo(); // M_UNDO
         transactions = { income: [], expenses: [] };
         saveData();
         render();
@@ -487,6 +492,7 @@ function closeModal() {
 }
 
 function saveTransaction() {
+    saveStateForUndo(); // M_UNDO
     const description = document.getElementById('descriptionInput').value.trim();
     const amount = parseFloat(document.getElementById('amountInput').value);
 
@@ -530,6 +536,7 @@ function deleteTransaction(event, type, index) {
     const message = `האם למחוק את <b>"${transaction.description}"</b> בסך <b>₪${transaction.amount.toLocaleString('he-IL')}</b>?`;
 
     openConfirmModal('אישור מחיקת תנועה', message, () => {
+         saveStateForUndo(); // M_UNDO
          if (type === 'income') transactions.income.splice(index, 1);
          else transactions.expenses.splice(index, 1);
         saveData();
@@ -539,6 +546,7 @@ function deleteTransaction(event, type, index) {
 }
 
 function toggleCheck(event, type, index) {
+    saveStateForUndo(); // M_UNDO
     event.stopPropagation();
     if (type === 'income') {
         transactions.income[index].checked = !transactions.income[index].checked;
@@ -576,6 +584,7 @@ function saveAmount(event, type, index) {
     }
 
     if (!isNaN(newAmount) && newAmount >= 0) {
+        saveStateForUndo(); // M_UNDO
         if (type === 'income') transactions.income[index].amount = newAmount;
         else transactions.expenses[index].amount = newAmount;
     }
@@ -609,6 +618,7 @@ function openApplyOptionsModal(type, index) {
 }
 
 function handleApplyAction(type, index, action) {
+    saveStateForUndo(); // M_UNDO
     const transaction = (type === 'income') ? transactions.income[index] : transactions.expenses[index];
     const amount = transaction.amount;
 
@@ -632,6 +642,23 @@ function handleApplyAction(type, index, action) {
 function closeApplyOptionsModal() {
     document.getElementById('applyOptionsModal').classList.remove('active');
 }
+
+// === UNDO FUNCTIONS ===
+function saveStateForUndo() {
+    previousState = JSON.parse(JSON.stringify(transactions)); // Create a deep copy
+    document.getElementById('undoBtn').disabled = false;
+}
+
+function undoLastAction() {
+    if (previousState) {
+        transactions = JSON.parse(JSON.stringify(previousState));
+        previousState = null; // Clear the memory after undoing
+        document.getElementById('undoBtn').disabled = true;
+        saveData();
+        render();
+    }
+}
+// ======================
 
 function render() {
     let filteredIncome = transactions.income;
@@ -674,7 +701,8 @@ function render() {
                         </div>
                         <div class="transaction-actions">
                             <button class="action-btn edit" onclick="openModal(event, 'income', ${i})" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
-                            <button class="action-btn apply" onclick="openApplyOptionsModal('income', ${i})" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></button>
+                            <button class="action-btn apply" onclick="openApplyOptionsModal('income', ${i})" title="החל על היתרה">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
                             <button class="action-btn delete" onclick="deleteTransaction(event, 'income', ${i})" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
                         </div>
                     </div>
@@ -741,7 +769,8 @@ function render() {
                         </div>
                         <div class="transaction-actions">
                             <button class="action-btn edit" onclick="openModal(event, 'expense', ${i})" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
-                            <button class="action-btn apply" onclick="openApplyOptionsModal('expense', ${i})" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></button>
+                            <button class="action-btn apply" onclick="openApplyOptionsModal('expense', ${i})" title="החל על היתרה">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
                             <button class="action-btn delete" onclick="deleteTransaction(event, 'expense', ${i})" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
                         </div>
                     </div>
@@ -805,6 +834,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('chartModal').addEventListener('click', (e) => { if (e.target.id === 'chartModal') closeChartModal(); });
     document.getElementById('confirmModal').addEventListener('click', (e) => { if (e.target.id === 'confirmModal') closeConfirmModal(); });
     document.getElementById('applyOptionsModal').addEventListener('click', (e) => { if (e.target.id === 'applyOptionsModal') closeApplyOptionsModal(); });
+    
+    document.body.classList.remove('preload');
 });
 
 function openConfirmModal(title, text, onConfirm) {
