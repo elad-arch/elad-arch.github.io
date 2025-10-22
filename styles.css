@@ -892,3 +892,77 @@ input[type="file"] { display: none; }
     margin-right: 4px;
     vertical-align: -2px;
 }
+
+/* עיצוב עבור הלוואה ששולמה */
+.transaction-item.completed .transaction-details,
+.transaction-item.completed .transaction-amount {
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+    opacity: 0.7; /* אפשר להוסיף גם דהייה קלה נוספת */
+}
+
+/* עיצוב עבור התווית "שולמה" */
+.badge-loan.completed {
+    background: #dcfce7; /* רקע ירוק בהיר */
+    color: #166534;    /* טקסט ירוק כהה */
+    font-weight: 700;
+}
+
+/* עיצוב עבור התווית "שולמה" במצב כהה */
+[data-theme="dark"] .badge-loan.completed {
+    background: #14532d;
+    color: #a7f3d0;
+}
+
+/* מוסיף מעבר חלק להצמדה/שחרור */
+.header {
+    transition: padding 0.3s ease, margin 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* זהו המצב שבו הכותרת מוצמדת */
+body.header-pinned .header {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: var(--bg-gradient-start);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    padding-top: 20px;
+    padding-bottom: 15px;
+    margin-bottom: 30px; /* שומר על המרווח מהכרטיסים */
+}
+
+/* ======================================= */
+/* === עיצוב עבור סרגל התפריט העליון === */
+/* ======================================= */
+.btn-pin {
+    background: #64748b; /* צבע ניטרלי */
+    color: white;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-pin:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+/* עיצוב כשהכפתור במצב "מוצמד" */
+.btn-pin.active {
+    background: #8b5cf6; /* אותו צבע כמו כפתור ערכת הנושא */
+}
+
+.btn-pin svg {
+    transition: transform 0.3s ease;
+}
+
+.btn-pin.active svg {
+    transform: rotate(45deg); /* אנימציה קטנה לאייקון */
+}

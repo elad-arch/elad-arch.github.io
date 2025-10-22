@@ -12,11 +12,17 @@ let filterIncome = 'all';
 let filterExpense = 'all';
 let previousState = null; // M_UNDO: Variable to hold the last state
 
-function toggleLoanProgress(element) {
-    const wrapper = element.closest('.transaction-wrapper');
-    const progressBar = wrapper.querySelector('.loan-progress');
-    if (progressBar) {
-        progressBar.classList.toggle('visible');
+function toggleLoanProgress(type, index) {
+    // מונע מהקליק להתפשט לאלמנטים אחרים אם הוא מגיע מאירוע
+    if (typeof type !== 'string') {
+        type.stopPropagation(); 
+    }
+
+    const transaction = transactions.expenses[index];
+    if (transaction && transaction.type === 'loan') {
+        // הופך את המצב: אם היה פתוח ייסגר, ולהיפך
+        transaction.isExpanded = !transaction.isExpanded;
+        render(); // צייר מחדש עם המצב המעודכן
     }
 }
 
@@ -282,29 +288,16 @@ function nextLoanPayment(event, type, index) {
     
     if (transaction.type === 'loan' && transaction.loanCurrent < transaction.loanTotal) {
         transaction.loanCurrent++;
-        saveData();
+        transaction.isExpanded = true;
 
-        const wrapper = event.target.closest('.transaction-wrapper');
-        if (wrapper) {
-            const progressBarFill = wrapper.querySelector('.progress-bar-fill');
-            const progressText = wrapper.querySelector('.progress-text');
-            
-            const percentage = (transaction.loanCurrent / transaction.loanTotal) * 100;
-            const amountPaid = transaction.amount * transaction.loanCurrent;
-            
-            if(progressBarFill) progressBarFill.style.width = `${percentage}%`;
-            if(progressText) progressText.textContent = `${transaction.loanCurrent}/${transaction.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו`;
-
-            if (transaction.loanCurrent >= transaction.loanTotal) {
-                const button = event.target.closest('button');
-                if (button) {
-                    button.disabled = true;
-                    button.title = 'ההלוואה שולמה במלואה';
-                    button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-                }
-            }
+        // אם זה התשלום האחרון, בטל את הסימון וסמן שהושלם
+        if (transaction.loanCurrent >= transaction.loanTotal) {
+            transaction.checked = false;
+            transaction.completed = true; 
         }
-         updateLoansSummary();
+        
+        saveData();
+        render(); // רענון מיידי של התצוגה
     }
 }
 
@@ -529,11 +522,25 @@ function saveTransaction() {
         transaction.originalLoanAmount = originalLoanAmount;
         transaction.loanTotal = loanTotal;
         transaction.loanCurrent = loanCurrent;
+
+        // --- הוספנו את הלוגיקה הבאה ---
+        // בדוק את סטטוס ההלוואה בכל שמירה
+        if (transaction.loanCurrent >= transaction.loanTotal) {
+            transaction.completed = true;
+            transaction.checked = false; // השאר לא מסומן אם עדיין שולם
+        } else {
+            // "החייאת" ההלוואה: אם היא כבר לא שולמה, החזר אותה למצב פעיל
+            transaction.completed = false;
+            transaction.checked = true; // סמן אותה כפעילה
+        }
+        // --- סוף הקוד שהוספנו ---
     }
 
     const list = currentType === 'income' ? transactions.income : transactions.expenses;
     if (editingIndex >= 0) {
-        list[editingIndex] = { ...list[editingIndex], ...transaction };
+        // שומר על תכונות שלא נערכות ישירות במודאל (כמו isExpanded)
+        const existingTransaction = list[editingIndex];
+        list[editingIndex] = { ...existingTransaction, ...transaction };
     } else {
         list.push(transaction);
     }
@@ -745,10 +752,16 @@ function render() {
         : filteredExpenses.map((t) => {
             const i = transactions.expenses.indexOf(t);
             let badgeClass = 'badge-regular', badgeText = 'קבוע';
+            const isCompleted = t.completed; // נבדוק אם ההלוואה הושלמה
 
             if (t.type === 'loan') {
-                badgeClass = 'badge-loan';
-                badgeText = 'הלוואה';
+                if (isCompleted) {
+                    badgeClass = 'badge-loan completed';
+                    badgeText = 'שולמה';
+                } else {
+                    badgeClass = 'badge-loan';
+                    badgeText = 'הלוואה';
+                }
             } else if (t.type === 'variable') { 
                 badgeClass = 'badge-variable'; 
                 badgeText = `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>&nbsp; כרטיס אשראי`; 
@@ -765,7 +778,7 @@ function render() {
                 const amountPaid = t.amount * t.loanCurrent;
                 const isComplete = t.loanCurrent >= t.loanTotal;
                 progressBar = `
-                    <div class="loan-progress">
+                    <div class="loan-progress ${t.isExpanded ? 'visible' : ''}">
                         <div class="loan-progress-container">
                             <div class="progress-bar-container"><div class="progress-bar-fill" style="width: ${percentage}%"></div></div>
                             <div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div>
@@ -777,7 +790,7 @@ function render() {
             }
 
             const itemHTML = `
-                <div class="transaction-item ${t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''}" ${t.type === 'loan' ? `onclick="toggleLoanProgress(this)"` : ''}>
+                <div class="transaction-item ${t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${isCompleted ? 'completed' : ''}" ${t.type === 'loan' ? `onclick="toggleLoanProgress(event, ${i})"` : ''}>
                     <div class="transaction-info">
                         <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'expense', ${i})">
                              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -837,6 +850,7 @@ function render() {
 
 document.addEventListener('DOMContentLoaded', () => {
     loadTheme();
+    loadHeaderPinState();
     loadData();
     loadCardStates();
     setupBalanceControls();
@@ -930,3 +944,29 @@ function loadCardStates() {
         }
     });
 }
+
+function toggleHeaderPin() {
+    const body = document.body;
+    const pinBtn = document.getElementById('pinHeaderBtn');
+    
+    // הוסף/הסר את הקלאס מה-body
+    body.classList.toggle('header-pinned');
+    
+    // בדוק מה המצב החדש, עדכן את הכפתור ושמור ב-localStorage
+    if (body.classList.contains('header-pinned')) {
+        pinBtn.classList.add('active');
+        localStorage.setItem('headerPinned', 'true');
+    } else {
+        pinBtn.classList.remove('active');
+        localStorage.setItem('headerPinned', 'false');
+    }
+}
+
+function loadHeaderPinState() {
+    const isPinned = localStorage.getItem('headerPinned') === 'true';
+    if (isPinned) {
+        document.body.classList.add('header-pinned');
+        document.getElementById('pinHeaderBtn').classList.add('active');
+    }
+}
+
