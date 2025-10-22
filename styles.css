@@ -870,9 +870,13 @@ input[type="file"] { display: none; }
 .btn-undo {
     background: #60a5fa;
     color: white;
-    padding: 10px 20px;
-    border-radius: 9999px;
-    gap: 8px;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .btn-undo:disabled {
@@ -954,15 +958,12 @@ body.header-pinned .header {
     box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
 
-/* עיצוב כשהכפתור במצב "מוצמד" */
-.btn-pin.active {
-    background: #8b5cf6; /* אותו צבע כמו כפתור ערכת הנושא */
-}
-
 .btn-pin svg {
     transition: transform 0.3s ease;
 }
 
-.btn-pin.active svg {
-    transform: rotate(45deg); /* אנימציה קטנה לאייקון */
+.btn-pin.active svg,
+.action-btn.pin-btn.active svg {
+    fill: currentColor; /* ממלא את האייקון בצבע כשהוא פעיל */
+    transform: scale(1.05); /* אנימציה קטנה של הגדלה במקום סיבוב */
 }
