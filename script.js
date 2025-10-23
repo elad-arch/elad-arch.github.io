@@ -1,13 +1,15 @@
 // ================================================
-// =========== שינוי מבנה הנתונים ===========
+// =========== הגדרות סנכרון לענן ===========
 // ================================================
-let allData = {}; // יחזיק את כל הנתונים, מחולקים לפי חודשים
-let currentMonth; // ישמור את מפתח החודש הנוכחי (למשל "2023-10")
+const BIN_ID = '68fa7e9ad0ea881f40b65011';
+const MASTER_KEY = '$2a$10$2l31FVG9Qxn1DXIcxeq6hOQmZgnLls5mCIGRq2Czzfv6fNyEHQFfG';
+const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
 
-// במקום transactions, כל המידע יאוחסן ב-allData[currentMonth]
-// למשל: allData[currentMonth].income, allData[currentMonth].expenses
 // ================================================
-
+// =========== הגדרות כלליות ===========
+// ================================================
+let allData = {};
+let currentMonth;
 let currentType = 'income';
 let editingIndex = -1;
 let chartInstance = null;
@@ -16,6 +18,123 @@ let sortModeExpense = false;
 let filterIncome = 'all';
 let filterExpense = 'all';
 let previousState = null;
+
+// ================================================
+// =========== פונקציות הצפנה ופענוח ===========
+// ================================================
+function encryptData(data, password) {
+    if (!password) return null;
+    try {
+        return CryptoJS.AES.encrypt(JSON.stringify(data), password).toString();
+    } catch (e) {
+        console.error("Encryption failed:", e);
+        return null;
+    }
+}
+
+function decryptData(encryptedData, password) {
+    if (!password || !encryptedData) return null;
+    try {
+        const bytes = CryptoJS.AES.decrypt(encryptedData, password);
+        const decryptedString = bytes.toString(CryptoJS.enc.Utf8);
+        if (!decryptedString) return null; // סיסמה שגויה
+        return JSON.parse(decryptedString);
+    } catch (e) {
+        console.error("Decryption failed:", e);
+        return null; // סביר להניח שהסיסמה שגויה או שהמידע פגום
+    }
+}
+
+// ================================================
+// =========== פונקציות סנכרון לענן ===========
+// ================================================
+async function loadFromCloud(password) {
+    try {
+        const response = await fetch(`${BIN_URL}/latest`, {
+            method: 'GET',
+            headers: { 'X-Master-Key': MASTER_KEY }
+        });
+        if (!response.ok) throw new Error('Failed to fetch data');
+        const cloudData = await response.json();
+        
+        if (Object.keys(cloudData.record).length === 0 || !cloudData.record.status) {
+            console.log("Cloud bin is empty. Will save local data.");
+            return 'empty'; 
+        }
+
+        const decryptedData = decryptData(cloudData.record.data, password);
+
+        if (decryptedData) {
+            allData = decryptedData;
+            saveDataToLocal();
+            loadData();
+            return 'success';
+        } else {
+            return 'decryption_failed';
+        }
+    } catch (error) {
+        console.error("Error loading from cloud:", error);
+        return 'error';
+    }
+}
+
+async function saveToCloud(password) {
+    const dataToEncrypt = { data: encryptData(allData, password) };
+    if (!dataToEncrypt.data) return 'encryption_failed';
+
+    try {
+        const response = await fetch(BIN_URL, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Master-Key': MASTER_KEY
+            },
+            body: JSON.stringify(dataToEncrypt)
+        });
+        if (!response.ok) throw new Error('Failed to save data');
+        return 'success';
+    } catch (error) {
+        console.error("Error saving to cloud:", error);
+        return 'error';
+    }
+}
+
+async function syncData() {
+    const password = document.getElementById('syncPassword').value;
+    if (!password) {
+        openConfirmModal('שגיאה', 'יש להזין סיסמת סנכרון.', closeConfirmModal);
+        return;
+    }
+
+    const syncBtn = document.getElementById('syncBtn');
+    const syncBtnSpan = syncBtn.querySelector('span');
+    syncBtn.disabled = true;
+    syncBtnSpan.textContent = "מסנכרן...";
+
+    const loadResult = await loadFromCloud(password);
+
+    if (loadResult === 'decryption_failed') {
+        syncBtnSpan.textContent = "סיסמה שגויה!";
+        syncBtn.classList.add('error');
+    } else if (loadResult === 'error') {
+        syncBtnSpan.textContent = "שגיאת רשת";
+        syncBtn.classList.add('error');
+    } else {
+        const saveResult = await saveToCloud(password);
+        if (saveResult === 'success') {
+            syncBtnSpan.textContent = "סונכרן!";
+        } else {
+            syncBtnSpan.textContent = "שגיאת שמירה";
+            syncBtn.classList.add('error');
+        }
+    }
+    
+    setTimeout(() => {
+        syncBtn.disabled = false;
+        syncBtnSpan.textContent = "סנכרן";
+        syncBtn.classList.remove('error');
+    }, 3000);
+}
 
 // ================================================
 // =========== פונקציות ניהול חודשים ===========
@@ -70,7 +189,7 @@ function navigateMonths(direction) {
             }
             
             closeConfirmModal();
-            saveData();
+            saveDataToLocal();
             render(); 
         };
 
@@ -83,7 +202,7 @@ function navigateMonths(direction) {
 
     } else if (allData[newMonthKey]) {
         currentMonth = newMonthKey;
-        saveData();
+        saveDataToLocal();
         loadData();
     }
 }
@@ -113,7 +232,7 @@ function deleteCurrentMonth() {
     currentMonth = newCurrentMonth;
 
     closeConfirmModal();
-    saveData();
+    saveDataToLocal();
     render();
 }
 
@@ -128,7 +247,7 @@ function jumpToMonth(monthKey) {
     }
     currentMonth = monthKey;
     toggleMonthJumper();
-    saveData();
+    saveDataToLocal();
     loadData();
 }
 
@@ -155,10 +274,41 @@ function populateMonthJumper() {
     });
 }
 
-function toggleLoanProgress(type, index) {
-    if (typeof type !== 'string') {
-        type.stopPropagation();
+// ================================================
+// =========== פונקציות שמירה וטעינה ===========
+// ================================================
+function saveDataToLocal() {
+    if (allData[currentMonth]) {
+        allData[currentMonth].balance = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
     }
+    localStorage.setItem('budgetData', JSON.stringify(allData));
+    localStorage.setItem('currentMonth', currentMonth);
+}
+
+function loadData() {
+    const savedData = localStorage.getItem('budgetData');
+    allData = savedData ? JSON.parse(savedData) : {};
+    
+    currentMonth = localStorage.getItem('currentMonth') || getCurrentMonthKey();
+
+    if (!allData[currentMonth]) {
+        allData[currentMonth] = {
+            income: [],
+            expenses: [],
+            balance: 0
+        };
+    }
+    
+    document.getElementById('currentBalanceInput').value = allData[currentMonth].balance || 0;
+    
+    loadFilters();
+    render();
+}
+
+// ================================================
+// =========== פונקציות ליבה ו-UI ===========
+// ================================================
+function toggleLoanProgress(type, index) {
     const transaction = allData[currentMonth].expenses[index];
     if (transaction && transaction.type === 'loan') {
         transaction.isExpanded = !transaction.isExpanded;
@@ -233,33 +383,6 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
     if (savedTheme === 'auto') applyTheme('auto');
 });
 
-function saveData() {
-    if (allData[currentMonth]) {
-        allData[currentMonth].balance = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
-    }
-    localStorage.setItem('budgetData', JSON.stringify(allData));
-    localStorage.setItem('currentMonth', currentMonth);
-}
-
-function loadData() {
-    const savedData = localStorage.getItem('budgetData');
-    allData = savedData ? JSON.parse(savedData) : {};
-    
-    currentMonth = localStorage.getItem('currentMonth') || getCurrentMonthKey();
-
-    if (!allData[currentMonth]) {
-        allData[currentMonth] = {
-            income: [],
-            expenses: [],
-            balance: 0
-        };
-    }
-    
-    document.getElementById('currentBalanceInput').value = allData[currentMonth].balance || 0;
-    
-    loadFilters();
-    render();
-}
 
 function updateSummary() {
     const currentBalanceValue = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
@@ -294,7 +417,7 @@ function updateSummary() {
         summaryCard.classList.add('alert-success');
         if (alertIconDiv) alertIconDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
     }
-    saveData();
+    saveDataToLocal();
 }
 
 function updateLoansSummary() {
@@ -377,7 +500,7 @@ function moveItem(event, type, index, direction) {
     const arr = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     if (direction === 'up' && index > 0) [arr[index], arr[index - 1]] = [arr[index - 1], arr[index]];
     else if (direction === 'down' && index < arr.length - 1) [arr[index], arr[index + 1]] = [arr[index + 1], arr[index]];
-    saveData();
+    saveDataToLocal();
     render();
 }
 
@@ -392,7 +515,7 @@ function nextLoanPayment(event, type, index) {
             transaction.checked = false;
             transaction.completed = true;
         }
-        saveData();
+        saveDataToLocal();
         render();
     }
 }
@@ -447,7 +570,7 @@ function importData(event) {
                     saveStateForUndo();
                     allData = imported;
                     currentMonth = Object.keys(allData).sort().pop() || getCurrentMonthKey();
-                    saveData();
+                    saveDataToLocal();
                     loadData();
                     closeConfirmModal();
                 });
@@ -515,7 +638,7 @@ function deleteAllData() {
         currentMonth = getCurrentMonthKey();
         allData[currentMonth] = { income: [], expenses: [], balance: 0 };
         document.getElementById('currentBalanceInput').value = 0;
-        saveData();
+        saveDataToLocal();
         render();
         closeConfirmModal();
     });
@@ -590,7 +713,7 @@ function saveTransaction() {
     } else {
         list.push(transaction);
     }
-    saveData();
+    saveDataToLocal();
     render();
     closeModal();
 }
@@ -603,7 +726,7 @@ function deleteTransaction(event, type, index) {
         saveStateForUndo();
         if (type === 'income') allData[currentMonth].income.splice(index, 1);
         else allData[currentMonth].expenses.splice(index, 1);
-        saveData();
+        saveDataToLocal();
         render();
         closeConfirmModal();
     });
@@ -614,7 +737,7 @@ function toggleCheck(event, type, index) {
     event.stopPropagation();
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     list[index].checked = !list[index].checked;
-    saveData();
+    saveDataToLocal();
     render();
 }
 
@@ -647,7 +770,7 @@ function saveAmount(event, type, index) {
         saveStateForUndo();
         list[index].amount = newAmount;
     }
-    saveData();
+    saveDataToLocal();
     render();
 }
 
@@ -685,7 +808,7 @@ function handleApplyAction(type, index, action) {
     if (action === 'apply-delete') list.splice(index, 1);
     else if (action === 'apply-zero') list[index].amount = 0;
     
-    saveData();
+    saveDataToLocal();
     render();
     closeApplyOptionsModal();
 }
@@ -704,7 +827,7 @@ function undoLastAction() {
         allData = JSON.parse(JSON.stringify(previousState));
         previousState = null;
         document.getElementById('undoBtn').disabled = true;
-        saveData();
+        saveDataToLocal();
         loadData();
     }
 }
@@ -793,8 +916,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('nextMonthBtn').addEventListener('click', () => navigateMonths(1));
     document.getElementById('deleteMonthBtn').addEventListener('click', confirmDeleteMonth);
     document.getElementById('monthJumperBtn').addEventListener('click', toggleMonthJumper);
+    document.getElementById('syncBtn').addEventListener('click', syncData);
 
-    document.querySelectorAll('.filter-option').forEach(option => {
+    document.querySelectorAll('#filterDropdownIncome .filter-option, #filterDropdownExpense .filter-option').forEach(option => {
         option.addEventListener('click', (e) => {
             const dropdown = e.target.closest('.filter-dropdown');
             const type = dropdown.id.includes('Income') ? 'income' : 'expense';

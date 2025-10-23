@@ -67,7 +67,6 @@ body:not(.preload) .collapse-btn svg {
     transition: text-shadow 0.4s ease;
 }
 
-/* =========== עיצוב חדש: ניווט חודשים =========== */
 .month-navigator {
     display: flex;
     justify-content: center;
@@ -99,7 +98,6 @@ body:not(.preload) .collapse-btn svg {
     color: #8b5cf6;
     transform: scale(1.05);
 }
-/* ============================================= */
 
 .header h1.title-positive-balance {
     text-shadow: 0 0 12px rgba(16, 185, 129, 0.8);
@@ -181,22 +179,6 @@ body:not(.preload) .collapse-btn svg {
 .btn svg {
     width: 20px;
     height: 20px;
-}
-
-.btn-export {
-    background: #10b981;
-    color: white;
-    padding: 10px 20px;
-    border-radius: 9999px;
-    gap: 8px;
-}
-
-.btn-import {
-    background: #3b82f6;
-    color: white;
-    padding: 10px 20px;
-    border-radius: 9999px;
-    gap: 8px;
 }
 
 .btn-delete-month {
@@ -1023,7 +1005,6 @@ body.header-pinned .header {
     transform: scale(1.05); /* אנימציה קטנה של הגדלה במקום סיבוב */
 }
 
-/* =========== עיצוב חדש: כפתור קפיצה לחודש =========== */
 .month-jumper-btn {
     background: transparent;
     border: none;
@@ -1051,3 +1032,75 @@ body.header-pinned .header {
     font-weight: 700;
 }
 /* ============================================= */
+
+.sync-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--card-bg);
+    padding: 4px;
+    border-radius: 9999px;
+    border: 2px solid var(--border-color);
+}
+#syncPassword {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    padding: 8px 16px;
+    font-size: 14px;
+    width: 150px;
+    outline: none;
+}
+.btn-sync {
+    background: #10b981;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 9999px;
+    gap: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    font-weight: 600;
+}
+.btn-sync:hover {
+    background: #059669;
+}
+.btn-sync:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+}
+.btn-sync.error {
+    background: #ef4444;
+}
+
+.backup-controls {
+    border-top: 2px solid var(--border-color);
+    padding-top: 16px;
+    margin-top: 16px;
+    display: flex;
+    justify-content: space-around;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.backup-controls .btn-delete-all-small {
+    background-color: var(--item-bg);
+    color: var(--text-secondary);
+    border: 2px solid var(--border-color);
+}
+.backup-controls .btn-delete-all-small:hover {
+    color: var(--text-primary);
+    border-color: var(--text-primary);
+    transform: none;
+    box-shadow: none;
+}
+.backup-controls .btn-delete-all-small:last-of-type {
+    background-color: #fee2e2;
+    color: #ef4444;
+    border-color: #fca5a5;
+}
+.backup-controls .btn-delete-all-small:last-of-type:hover {
+    background-color: #ef4444;
+    color: white;
+}
