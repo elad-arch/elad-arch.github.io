@@ -1,7 +1,7 @@
 // ================================================
 // =========== הגדרות סנכרון לענן ===========
 // ================================================
-const BIN_ID = '68fa7e9ad0ea881f40b65011';
+const BIN_ID = '68fa8d59d0ea881f40b669cb';
 const MASTER_KEY = '$2a$10$2l31FVG9Qxn1DXIcxeq6hOQmZgnLls5mCIGRq2Czzfv6fNyEHQFfG';
 const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
 
