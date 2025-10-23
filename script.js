@@ -57,8 +57,7 @@ async function loadFromCloud(password) {
         if (!response.ok) throw new Error('Failed to fetch data');
         const cloudData = await response.json();
         
-        // בדוק אם ה-bin במצב התחלתי או לא מכיל את מבנה הנתונים הצפוי
-        if (cloudData.record.status === "ready" || !cloudData.record.data) {
+        if (Object.keys(cloudData.record).length === 0 || !cloudData.record.data) {
             console.log("Cloud bin is empty or in initial state.");
             return 'empty'; 
         }
@@ -67,6 +66,8 @@ async function loadFromCloud(password) {
 
         if (decryptedData) {
             allData = decryptedData;
+            // *** התיקון המרכזי: עדכן את החודש הנוכחי לחודש האחרון מהענן ***
+            currentMonth = Object.keys(allData).sort().pop() || getCurrentMonthKey();
             saveDataToLocal();
             loadData();
             return 'success';
@@ -80,7 +81,6 @@ async function loadFromCloud(password) {
 }
 
 async function saveToCloud(password) {
-    // עוטפים את המידע המוצפן באובייקט כדי לוודא שה-JSON תמיד תקין
     const dataToSave = { data: encryptData(allData, password) };
     if (!dataToSave.data) return 'encryption_failed';
 
@@ -122,7 +122,6 @@ async function syncData() {
         syncBtnSpan.textContent = "שגיאת רשת";
         syncBtn.classList.add('error');
     } else {
-        // אם הטעינה הצליחה, או אם הענן היה ריק, נשמור את המצב הנוכחי חזרה לענן
         const saveResult = await saveToCloud(password);
         if (saveResult === 'success') {
             syncBtnSpan.textContent = "סונכרן!";
@@ -921,7 +920,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('syncBtn').addEventListener('click', syncData);
 
     document.querySelectorAll('#filterDropdownIncome .filter-option, #filterDropdownExpense .filter-option').forEach(option => {
-        option.addEventListener('click', () => {
+        option.addEventListener('click', (e) => {
             const dropdown = option.closest('.filter-dropdown');
             const type = dropdown.id.includes('Income') ? 'income' : 'expense';
             const filter = option.dataset.filter;
