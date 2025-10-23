@@ -18,11 +18,10 @@ let filterExpense = 'all';
 let previousState = null;
 
 // ================================================
-// =========== פונקציות חדשות לניהול חודשים ===========
+// =========== פונקציות ניהול חודשים ===========
 // ================================================
 function getCurrentMonthKey() {
     const now = new Date();
-    // הפורמט YYYY-MM מבטיח סדר כרונולוגי תקין ושניתן להשוות אותו בקלות
     return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
 }
 
@@ -36,65 +35,64 @@ function updateMonthDisplay() {
 
 function navigateMonths(direction) {
     saveStateForUndo();
+    const prevMonthKey = currentMonth;
+    
     const [year, month] = currentMonth.split('-').map(Number);
     const currentDate = new Date(year, month - 1, 1);
-    
     currentDate.setMonth(currentDate.getMonth() + direction);
     
-    const prevMonthKey = currentMonth;
     const newYear = currentDate.getFullYear();
     const newMonth = (currentDate.getMonth() + 1).toString().padStart(2, '0');
-    currentMonth = `${newYear}-${newMonth}`;
+    const newMonthKey = `${newYear}-${newMonth}`;
 
-    // אם זה חודש חדש שאין לו נתונים, ניצור לו מבנה התחלתי
-    if (!allData[currentMonth]) {
-        let previousMonthFinalBalance = 0;
-        // נחשב את היתרה הסופית של החודש הקודם רק אם הוא קיים
-        if (allData[prevMonthKey]) {
-            const prevData = allData[prevMonthKey];
-            const prevBalance = prevData.balance || 0;
-            const prevIncome = prevData.income.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
-            const prevExpenses = prevData.expenses.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
-            previousMonthFinalBalance = Math.round(prevBalance + prevIncome - prevExpenses);
-        }
-        
-        allData[currentMonth] = {
-            income: [],
-            expenses: [],
-            balance: previousMonthFinalBalance // הגדרת יתרת הפתיחה של החודש החדש
+    if (direction > 0 && !allData[newMonthKey]) {
+        const onConfirm = () => {
+            currentMonth = newMonthKey;
+            let previousMonthFinalBalance = 0;
+            if (allData[prevMonthKey]) {
+                const prevData = allData[prevMonthKey];
+                const prevBalance = prevData.balance || 0;
+                const prevIncome = prevData.income.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
+                const prevExpenses = prevData.expenses.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
+                previousMonthFinalBalance = Math.round(prevBalance + prevIncome - prevExpenses);
+            }
+            
+            allData[currentMonth] = { income: [], expenses: [], balance: previousMonthFinalBalance };
+
+            if (allData[prevMonthKey]) {
+                allData[currentMonth].income = allData[prevMonthKey].income
+                    .filter(t => t.type === 'regular')
+                    .map(t => ({ ...t, id: Date.now() + Math.random(), checked: true }));
+
+                allData[currentMonth].expenses = allData[prevMonthKey].expenses
+                    .filter(t => t.type === 'regular' || t.type === 'loan')
+                    .map(t => ({ ...t, id: Date.now() + Math.random(), checked: true }));
+            }
+            
+            closeConfirmModal();
+            saveData();
+            render(); 
         };
 
-        // אם המעבר קדימה, ננסה להעתיק תנועות קבועות מהחודש הקודם
-        if (direction > 0 && allData[prevMonthKey]) {
-            // העתקת הכנסות קבועות
-            allData[currentMonth].income = allData[prevMonthKey].income
-                .filter(t => t.type === 'regular')
-                .map(t => ({ ...t, id: Date.now() + Math.random(), checked: true }));
+        openConfirmModal(
+            'יצירת חודש חדש', 
+            'אתה עומד לפתוח חודש חדש. האם להעתיק את התנועות הקבועות מהחודש הנוכחי?', 
+            onConfirm,
+            closeConfirmModal
+        );
 
-            // ==========================================================
-            // =========== שינוי: כרטיס אשראי (variable) לא משוכפל ===========
-            // ==========================================================
-            // העתקת הוצאות קבועות והלוואות בלבד
-            allData[currentMonth].expenses = allData[prevMonthKey].expenses
-                .filter(t => t.type === 'regular' || t.type === 'loan') // הורדנו את variable
-                .map(t => ({ ...t, id: Date.now() + Math.random(), checked: true }));
-        }
+    } else if (allData[newMonthKey]) {
+        currentMonth = newMonthKey;
+        saveData();
+        loadData();
     }
-    
-    // טען את העו"ש של החודש החדש
-    document.getElementById('currentBalanceInput').value = allData[currentMonth].balance || 0;
-    saveData();
-    render();
 }
 
-// =========== קוד חדש: פונקציות למחיקת חודש ===========
 function confirmDeleteMonth() {
-    // הגנה: לא מאפשרים למחוק את החודש האחרון
     if (Object.keys(allData).length <= 1) {
         openConfirmModal('מידע', 'לא ניתן למחוק את החודש האחרון שנותר.', closeConfirmModal);
         return;
     }
-
     const [year, month] = currentMonth.split('-');
     const date = new Date(year, month - 1);
     const monthName = date.toLocaleString('he-IL', { month: 'long' });
@@ -106,16 +104,55 @@ function confirmDeleteMonth() {
 function deleteCurrentMonth() {
     saveStateForUndo();
     const monthToDelete = currentMonth;
+    const existingMonths = Object.keys(allData).sort();
+    const currentIndex = existingMonths.indexOf(monthToDelete);
+    
+    let newCurrentMonth = (currentIndex > 0) ? existingMonths[currentIndex - 1] : existingMonths[currentIndex + 1];
 
-    // נווט לחודש הקודם *לפני* המחיקה
-    navigateMonths(-1);
-
-    // מחק את החודש המקורי
     delete allData[monthToDelete];
+    currentMonth = newCurrentMonth;
 
     closeConfirmModal();
     saveData();
-    render(); // רענון נוסף כדי לוודא שהכל נכון
+    render();
+}
+
+function toggleMonthJumper() {
+    document.getElementById('monthJumperList').classList.toggle('active');
+}
+
+function jumpToMonth(monthKey) {
+    if (currentMonth === monthKey) {
+        toggleMonthJumper();
+        return;
+    }
+    currentMonth = monthKey;
+    toggleMonthJumper();
+    saveData();
+    loadData();
+}
+
+function populateMonthJumper() {
+    const jumperList = document.getElementById('monthJumperList');
+    const months = Object.keys(allData).sort((a, b) => b.localeCompare(a));
+    
+    jumperList.innerHTML = '';
+
+    months.forEach(monthKey => {
+        const [year, month] = monthKey.split('-');
+        const date = new Date(year, month - 1);
+        const monthName = date.toLocaleString('he-IL', { month: 'long', year: 'numeric' });
+
+        const option = document.createElement('div');
+        option.classList.add('filter-option');
+        if (monthKey === currentMonth) {
+            option.classList.add('selected');
+        }
+        option.textContent = monthName;
+        option.onclick = () => jumpToMonth(monthKey);
+        
+        jumperList.appendChild(option);
+    });
 }
 
 function toggleLoanProgress(type, index) {
@@ -196,16 +233,10 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
     if (savedTheme === 'auto') applyTheme('auto');
 });
 
-// ================================================
-// =========== עדכון פונקציות שמירה וטעינה ===========
-// ================================================
 function saveData() {
-    // עדכון העו"ש הנוכחי עבור החודש הפעיל
     if (allData[currentMonth]) {
         allData[currentMonth].balance = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
     }
-    
-    // שמירת כל בסיס הנתונים והחודש הנוכחי
     localStorage.setItem('budgetData', JSON.stringify(allData));
     localStorage.setItem('currentMonth', currentMonth);
 }
@@ -216,7 +247,6 @@ function loadData() {
     
     currentMonth = localStorage.getItem('currentMonth') || getCurrentMonthKey();
 
-    // אם זה חודש חדש שאין לו נתונים, ניצור לו מבנה התחלתי
     if (!allData[currentMonth]) {
         allData[currentMonth] = {
             income: [],
@@ -230,7 +260,6 @@ function loadData() {
     loadFilters();
     render();
 }
-// ================================================
 
 function updateSummary() {
     const currentBalanceValue = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
@@ -238,8 +267,9 @@ function updateSummary() {
     input.classList.toggle('positive-balance', currentBalanceValue > 0);
     input.classList.toggle('negative-balance', currentBalanceValue < 0);
 
-    const incomeTotal = allData[currentMonth].income.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
-    const expenseTotal = allData[currentMonth].expenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
+    const currentData = allData[currentMonth] || { income: [], expenses: [] };
+    const incomeTotal = currentData.income.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
+    const expenseTotal = currentData.expenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const balanceAfterExpenses = currentBalanceValue - expenseTotal;
     const finalBalance = balanceAfterExpenses + incomeTotal;
 
@@ -268,7 +298,7 @@ function updateSummary() {
 }
 
 function updateLoansSummary() {
-    const loanTransactions = allData[currentMonth].expenses.filter(t => t.type === 'loan');
+    const loanTransactions = allData[currentMonth]?.expenses.filter(t => t.type === 'loan') || [];
     const loansContent = document.getElementById('loansSummaryContent');
     const noLoansMessage = document.getElementById('noLoansMessage');
     const totalAmount = loanTransactions.reduce((sum, t) => sum + (t.originalLoanAmount || 0), 0);
@@ -305,8 +335,8 @@ function updateLoansSummary() {
 function updateBalanceIndicator() {
     const titleElement = document.querySelector('.header h1');
     const indicator = document.getElementById('balanceIndicator');
-    const totalIncome = allData[currentMonth].income.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
-    const totalExpenses = allData[currentMonth].expenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
+    const totalIncome = allData[currentMonth]?.income.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0) || 0;
+    const totalExpenses = allData[currentMonth]?.expenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0) || 0;
 
     titleElement.classList.toggle('title-positive-balance', totalIncome > totalExpenses);
     titleElement.classList.toggle('title-negative-balance', totalExpenses > totalIncome);
@@ -395,13 +425,6 @@ function setFilter(type, filter) {
     render();
 }
 
-document.addEventListener('click', (e) => {
-    if (!e.target.closest('.dropdown-container')) {
-        document.getElementById('filterDropdownIncome').classList.remove('active');
-        document.getElementById('filterDropdownExpense').classList.remove('active');
-    }
-});
-
 function exportData() {
     const dataStr = JSON.stringify(allData, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
@@ -423,7 +446,7 @@ function importData(event) {
                 openConfirmModal('אישור ייבוא נתונים', 'האם לייבא את הנתונים? הנתונים הנוכחיים יוחלפו.', () => {
                     saveStateForUndo();
                     allData = imported;
-                    currentMonth = Object.keys(allData).sort().pop() || getCurrentMonthKey(); // Go to the latest month
+                    currentMonth = Object.keys(allData).sort().pop() || getCurrentMonthKey();
                     saveData();
                     loadData();
                     closeConfirmModal();
@@ -489,7 +512,7 @@ function deleteAllData() {
     openConfirmModal('אישור מחיקת כל הנתונים', message, () => {
         saveStateForUndo();
         allData = {};
-        currentMonth = getCurrentMonthKey(); // Reset to current month
+        currentMonth = getCurrentMonthKey();
         allData[currentMonth] = { income: [], expenses: [], balance: 0 };
         document.getElementById('currentBalanceInput').value = 0;
         saveData();
@@ -682,13 +705,13 @@ function undoLastAction() {
         previousState = null;
         document.getElementById('undoBtn').disabled = true;
         saveData();
-        loadData(); // טעינה מחדש כדי לוודא שהחודש הנכון מוצג
+        loadData();
     }
 }
 
 function render() {
     const currentData = allData[currentMonth];
-    if (!currentData) return; // הגנה במקרה שהנתונים לא אותחלו
+    if (!currentData) return;
 
     let filteredIncome = currentData.income;
     if (filterIncome !== 'all') {
@@ -753,6 +776,7 @@ function render() {
     document.querySelector('.expense-card .chart-btn').disabled = filterExpense !== 'all';
     document.querySelector('.expense-card .sort-mode-btn').disabled = filterExpense !== 'all';
     
+    populateMonthJumper();
     updateMonthDisplay();
     updateBalanceIndicator();
     updateLoansSummary();
@@ -765,13 +789,10 @@ document.addEventListener('DOMContentLoaded', () => {
     loadData();
     loadCardStates();
     setupBalanceControls();
-
-    // Event listeners for new month navigation
     document.getElementById('prevMonthBtn').addEventListener('click', () => navigateMonths(-1));
     document.getElementById('nextMonthBtn').addEventListener('click', () => navigateMonths(1));
-
-// =========== קוד חדש: מאזין לכפתור מחיקת חודש ===========
     document.getElementById('deleteMonthBtn').addEventListener('click', confirmDeleteMonth);
+    document.getElementById('monthJumperBtn').addEventListener('click', toggleMonthJumper);
 
     document.querySelectorAll('.filter-option').forEach(option => {
         option.addEventListener('click', (e) => {
@@ -790,6 +811,14 @@ document.addEventListener('DOMContentLoaded', () => {
             closeApplyOptionsModal();
         }
     });
+    
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.dropdown-container')) {
+            document.getElementById('filterDropdownIncome').classList.remove('active');
+            document.getElementById('filterDropdownExpense').classList.remove('active');
+            document.getElementById('monthJumperList').classList.remove('active');
+        }
+    });
 
     ['transactionModal', 'chartModal', 'confirmModal', 'applyOptionsModal'].forEach(id => {
         document.getElementById(id).addEventListener('click', (e) => {
@@ -800,18 +829,28 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.remove('preload');
 });
 
-function openConfirmModal(title, text, onConfirm) {
+function openConfirmModal(title, text, onConfirm, onCancel = closeConfirmModal) {
     document.getElementById('confirmModalTitle').textContent = title;
     document.getElementById('confirmModalText').innerHTML = text;
+    
     const confirmBtn = document.getElementById('confirmModalConfirmBtn');
+    const cancelBtn = document.querySelector('#confirmModal .modal-btn-cancel');
+
     const newConfirmBtn = confirmBtn.cloneNode(true);
     confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
     newConfirmBtn.addEventListener('click', onConfirm);
+
+    const newCancelBtn = cancelBtn.cloneNode(true);
+    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+    newCancelBtn.addEventListener('click', onCancel);
+
     const isInfo = title === 'שגיאה' || title === 'מידע';
     newConfirmBtn.style.display = isInfo ? 'none' : 'flex';
-    document.querySelector('#confirmModal .modal-btn-cancel').textContent = isInfo ? 'סגור' : 'ביטול';
+    newCancelBtn.textContent = isInfo ? 'סגור' : 'ביטול';
+
     document.getElementById('confirmModal').classList.add('active');
 }
+
 
 function closeConfirmModal() {
     document.getElementById('confirmModal').classList.remove('active');

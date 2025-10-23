@@ -1022,3 +1022,32 @@ body.header-pinned .header {
     fill: currentColor; /* ממלא את האייקון בצבע כשהוא פעיל */
     transform: scale(1.05); /* אנימציה קטנה של הגדלה במקום סיבוב */
 }
+
+/* =========== עיצוב חדש: כפתור קפיצה לחודש =========== */
+.month-jumper-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.month-jumper-btn:hover {
+    background: var(--item-hover);
+    color: var(--text-primary);
+}
+
+#monthJumperList .filter-option {
+    justify-content: space-between;
+}
+
+#monthJumperList .filter-option.selected {
+    font-weight: 700;
+}
+/* ============================================= */
