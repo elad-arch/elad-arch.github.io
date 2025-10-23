@@ -18,6 +18,8 @@ let sortModeExpense = false;
 let filterIncome = 'all';
 let filterExpense = 'all';
 let previousState = null;
+let selectedTransactionType = 'regular';
+
 
 // ================================================
 // =========== פונקציות הצפנה ופענוח ===========
@@ -52,21 +54,23 @@ async function loadFromCloud(password) {
     try {
         const response = await fetch(`${BIN_URL}/latest`, {
             method: 'GET',
-            headers: { 'X-Master-Key': MASTER_KEY }
+            headers: {
+                'X-Master-Key': MASTER_KEY
+            }
         });
         if (!response.ok) throw new Error('Failed to fetch data');
+
         const cloudData = await response.json();
-        
+
         if (Object.keys(cloudData.record).length === 0 || !cloudData.record.data) {
             console.log("Cloud bin is empty or in initial state.");
-            return 'empty'; 
+            return 'empty';
         }
 
         const decryptedData = decryptData(cloudData.record.data, password);
 
         if (decryptedData) {
             allData = decryptedData;
-            // *** התיקון המרכזי: עדכן את החודש הנוכחי לחודש האחרון מהענן ***
             currentMonth = Object.keys(allData).sort().pop() || getCurrentMonthKey();
             saveDataToLocal();
             loadData();
@@ -81,7 +85,9 @@ async function loadFromCloud(password) {
 }
 
 async function saveToCloud(password) {
-    const dataToSave = { data: encryptData(allData, password) };
+    const dataToSave = {
+        data: encryptData(allData, password)
+    };
     if (!dataToSave.data) return 'encryption_failed';
 
     try {
@@ -101,42 +107,60 @@ async function saveToCloud(password) {
     }
 }
 
-async function syncData() {
+async function handleLoadFromCloud() {
     const password = document.getElementById('syncPassword').value;
     if (!password) {
         openConfirmModal('שגיאה', 'יש להזין סיסמת סנכרון.', closeConfirmModal);
         return;
     }
 
-    const syncBtn = document.getElementById('syncBtn');
-    const syncBtnSpan = syncBtn.querySelector('span');
-    syncBtn.disabled = true;
-    syncBtnSpan.textContent = "מסנכרן...";
+    const loadBtn = document.getElementById('loadFromCloudBtn');
+    loadBtn.disabled = true;
 
-    const loadResult = await loadFromCloud(password);
+    const result = await loadFromCloud(password);
 
-    if (loadResult === 'decryption_failed') {
-        syncBtnSpan.textContent = "סיסמה שגויה!";
-        syncBtn.classList.add('error');
-    } else if (loadResult === 'error') {
-        syncBtnSpan.textContent = "שגיאת רשת";
-        syncBtn.classList.add('error');
-    } else {
-        const saveResult = await saveToCloud(password);
-        if (saveResult === 'success') {
-            syncBtnSpan.textContent = "סונכרן!";
-        } else {
-            syncBtnSpan.textContent = "שגיאת שמירה";
-            syncBtn.classList.add('error');
-        }
+    if (result === 'decryption_failed') {
+        openConfirmModal('שגיאה', 'הסיסמה שגויה.', closeConfirmModal);
+    } else if (result === 'error') {
+        openConfirmModal('שגיאה', 'אירעה שגיאת רשת בעת הטעינה.', closeConfirmModal);
+    } else if (result === 'success') {
+        openConfirmModal('הצלחה', 'הנתונים נטענו מהענן!', closeConfirmModal);
+    } else if (result === 'empty') {
+        openConfirmModal('מידע', 'מאגר הנתונים בענן ריק.', closeConfirmModal);
     }
-    
-    setTimeout(() => {
-        syncBtn.disabled = false;
-        syncBtnSpan.textContent = "סנכרן";
-        syncBtn.classList.remove('error');
-    }, 3000);
+
+    loadBtn.disabled = false;
 }
+
+async function handleSaveToCloud() {
+    const password = document.getElementById('syncPassword').value;
+    if (!password) {
+        openConfirmModal('שגיאה', 'יש להזין סיסמת סנכרון.', closeConfirmModal);
+        return;
+    }
+
+    const saveBtn = document.getElementById('saveToCloudBtn');
+    saveBtn.disabled = true;
+    saveBtn.classList.add('loading');
+
+    const result = await saveToCloud(password);
+
+    if (result === 'encryption_failed') {
+        openConfirmModal('שגיאה', 'ההצפנה נכשלה. לא ניתן היה לשמור.', closeConfirmModal);
+        saveBtn.classList.add('error');
+    } else if (result === 'error') {
+        openConfirmModal('שגיאה', 'אירעה שגיאת רשת בעת השמירה.', closeConfirmModal);
+        saveBtn.classList.add('error');
+    } else if (result === 'success') {
+        saveBtn.classList.add('success');
+    }
+
+    setTimeout(() => {
+        saveBtn.disabled = false;
+        saveBtn.classList.remove('loading', 'success', 'error');
+    }, 2000);
+}
+
 
 // ================================================
 // =========== פונקציות ניהול חודשים ===========
@@ -150,18 +174,20 @@ function updateMonthDisplay() {
     if (!currentMonth) return;
     const [year, month] = currentMonth.split('-');
     const date = new Date(year, month - 1);
-    const monthName = date.toLocaleString('he-IL', { month: 'long' });
+    const monthName = date.toLocaleString('he-IL', {
+        month: 'long'
+    });
     document.getElementById('currentMonthDisplay').textContent = `${monthName} ${year}`;
 }
 
 function navigateMonths(direction) {
     saveStateForUndo();
     const prevMonthKey = currentMonth;
-    
+
     const [year, month] = currentMonth.split('-').map(Number);
     const currentDate = new Date(year, month - 1, 1);
     currentDate.setMonth(currentDate.getMonth() + direction);
-    
+
     const newYear = currentDate.getFullYear();
     const newMonth = (currentDate.getMonth() + 1).toString().padStart(2, '0');
     const newMonthKey = `${newYear}-${newMonth}`;
@@ -177,27 +203,37 @@ function navigateMonths(direction) {
                 const prevExpenses = prevData.expenses.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
                 previousMonthFinalBalance = Math.round(prevBalance + prevIncome - prevExpenses);
             }
-            
-            allData[currentMonth] = { income: [], expenses: [], balance: previousMonthFinalBalance };
+
+            allData[currentMonth] = {
+                income: [],
+                expenses: [],
+                balance: previousMonthFinalBalance
+            };
 
             if (allData[prevMonthKey]) {
                 allData[currentMonth].income = allData[prevMonthKey].income
                     .filter(t => t.type === 'regular')
-                    .map(t => ({ ...t, id: Date.now() + Math.random(), checked: true }));
+                    .map(t => ({ ...t,
+                        id: Date.now() + Math.random(),
+                        checked: true
+                    }));
 
                 allData[currentMonth].expenses = allData[prevMonthKey].expenses
                     .filter(t => t.type === 'regular' || t.type === 'loan')
-                    .map(t => ({ ...t, id: Date.now() + Math.random(), checked: true }));
+                    .map(t => ({ ...t,
+                        id: Date.now() + Math.random(),
+                        checked: true
+                    }));
             }
-            
+
             closeConfirmModal();
             saveDataToLocal();
-            render(); 
+            render();
         };
 
         openConfirmModal(
-            'יצירת חודש חדש', 
-            'אתה עומד לפתוח חודש חדש. האם להעתיק את התנועות הקבועות מהחודש הנוכחי?', 
+            'יצירת חודש חדש',
+            'אתה עומד לפתוח חודש חדש. האם להעתיק את התנועות הקבועות מהחודש הנוכחי?',
             onConfirm,
             closeConfirmModal
         );
@@ -216,9 +252,11 @@ function confirmDeleteMonth() {
     }
     const [year, month] = currentMonth.split('-');
     const date = new Date(year, month - 1);
-    const monthName = date.toLocaleString('he-IL', { month: 'long' });
+    const monthName = date.toLocaleString('he-IL', {
+        month: 'long'
+    });
     const message = `האם למחוק את כל הנתונים עבור חודש <b>${monthName} ${year}</b>?`;
-    
+
     openConfirmModal('אישור מחיקת חודש', message, deleteCurrentMonth);
 }
 
@@ -227,7 +265,7 @@ function deleteCurrentMonth() {
     const monthToDelete = currentMonth;
     const existingMonths = Object.keys(allData).sort();
     const currentIndex = existingMonths.indexOf(monthToDelete);
-    
+
     let newCurrentMonth = (currentIndex > 0) ? existingMonths[currentIndex - 1] : existingMonths[currentIndex + 1];
 
     delete allData[monthToDelete];
@@ -255,15 +293,18 @@ function jumpToMonth(monthKey) {
 
 function populateMonthJumper() {
     const jumperList = document.getElementById('monthJumperList');
-    if(!jumperList) return;
+    if (!jumperList) return;
     const months = Object.keys(allData).sort((a, b) => b.localeCompare(a));
-    
+
     jumperList.innerHTML = '';
 
     months.forEach(monthKey => {
         const [year, month] = monthKey.split('-');
         const date = new Date(year, month - 1);
-        const monthName = date.toLocaleString('he-IL', { month: 'long', year: 'numeric' });
+        const monthName = date.toLocaleString('he-IL', {
+            month: 'long',
+            year: 'numeric'
+        });
 
         const option = document.createElement('div');
         option.classList.add('filter-option');
@@ -272,7 +313,7 @@ function populateMonthJumper() {
         }
         option.textContent = monthName;
         option.onclick = () => jumpToMonth(monthKey);
-        
+
         jumperList.appendChild(option);
     });
 }
@@ -291,7 +332,7 @@ function saveDataToLocal() {
 function loadData() {
     const savedData = localStorage.getItem('budgetData');
     allData = savedData ? JSON.parse(savedData) : {};
-    
+
     currentMonth = localStorage.getItem('currentMonth') || getCurrentMonthKey();
 
     if (!allData[currentMonth]) {
@@ -301,9 +342,9 @@ function loadData() {
             balance: 0
         };
     }
-    
+
     document.getElementById('currentBalanceInput').value = allData[currentMonth].balance || 0;
-    
+
     loadFilters();
     render();
 }
@@ -327,17 +368,25 @@ const themeIcons = {
 
 function selectTransactionType(type) {
     if ((type === 'loan' || type === 'variable') && currentType === 'income') return;
+
     selectedTransactionType = type;
     document.querySelectorAll('.type-option').forEach(el => el.classList.remove('selected'));
     const amountLabel = document.getElementById('amountLabel');
     const loanFields = document.getElementById('loanFields');
     const descriptionInput = document.getElementById('descriptionInput');
-    if (currentType === 'income') descriptionInput.placeholder = "למשל: משכורת, מתנה";
-    else {
-        if (type === 'variable') descriptionInput.placeholder = "למשל: שם הכרטיס (אמקס, ויזה)";
-        else if (type === 'loan') descriptionInput.placeholder = "למשל: החזר משכנתא, הלוואת רכב";
-        else descriptionInput.placeholder = "למשל: קניות, חשבון חשמל";
+
+    if (currentType === 'income') {
+        descriptionInput.placeholder = "למשל: משכורת, מתנה";
+    } else {
+        if (type === 'variable') {
+            descriptionInput.placeholder = "למשל: שם הכרטיס (אמקס, ויזה)";
+        } else if (type === 'loan') {
+            descriptionInput.placeholder = "למשל: החזר משכנתא, הלוואת רכב";
+        } else {
+            descriptionInput.placeholder = "למשל: קניות, חשבון חשמל";
+        }
     }
+
     if (type === 'loan') {
         document.getElementById('typeLoan').classList.add('selected');
         loanFields.classList.add('active');
@@ -362,8 +411,11 @@ function loadTheme() {
 
 function applyTheme(theme) {
     const body = document.body;
-    if (theme === 'auto') body.setAttribute('data-theme', getSystemTheme());
-    else body.setAttribute('data-theme', theme);
+    if (theme === 'auto') {
+        body.setAttribute('data-theme', getSystemTheme());
+    } else {
+        body.setAttribute('data-theme', theme);
+    }
     updateThemeButton(theme);
 }
 
@@ -374,18 +426,23 @@ function updateThemeButton(theme) {
 function cycleTheme() {
     const currentTheme = localStorage.getItem('themePreference') || 'auto';
     let newTheme;
-    if (currentTheme === 'auto') newTheme = 'light';
-    else if (currentTheme === 'light') newTheme = 'dark';
-    else newTheme = 'auto';
+    if (currentTheme === 'auto') {
+        newTheme = 'light';
+    } else if (currentTheme === 'light') {
+        newTheme = 'dark';
+    } else {
+        newTheme = 'auto';
+    }
     localStorage.setItem('themePreference', newTheme);
     applyTheme(newTheme);
 }
 
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     const savedTheme = localStorage.getItem('themePreference') || 'auto';
-    if (savedTheme === 'auto') applyTheme('auto');
+    if (savedTheme === 'auto') {
+        applyTheme('auto');
+    }
 });
-
 
 function updateSummary() {
     const currentBalanceValue = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
@@ -393,23 +450,31 @@ function updateSummary() {
     input.classList.toggle('positive-balance', currentBalanceValue > 0);
     input.classList.toggle('negative-balance', currentBalanceValue < 0);
 
-    const currentData = allData[currentMonth] || { income: [], expenses: [] };
+    const currentData = allData[currentMonth] || {
+        income: [],
+        expenses: []
+    };
     const incomeTotal = currentData.income.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const expenseTotal = currentData.expenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const balanceAfterExpenses = currentBalanceValue - expenseTotal;
     const finalBalance = balanceAfterExpenses + incomeTotal;
 
     const afterExpensesEl = document.getElementById('balanceAfterExpenses');
-    afterExpensesEl.textContent = '₪' + balanceAfterExpenses.toLocaleString('he-IL', { minimumFractionDigits: 2 });
+    afterExpensesEl.textContent = '₪' + balanceAfterExpenses.toLocaleString('he-IL', {
+        minimumFractionDigits: 2
+    });
     afterExpensesEl.className = 'summary-block-value ' + (balanceAfterExpenses >= 0 ? 'positive' : 'negative');
 
     const finalBalanceEl = document.getElementById('finalBalance');
-    finalBalanceEl.textContent = '₪' + finalBalance.toLocaleString('he-IL', { minimumFractionDigits: 2 });
+    finalBalanceEl.textContent = '₪' + finalBalance.toLocaleString('he-IL', {
+        minimumFractionDigits: 2
+    });
     finalBalanceEl.className = 'summary-block-value ' + (finalBalance >= 0 ? 'positive' : 'negative');
-    
+
     const summaryCard = document.querySelector('.summary-card');
     summaryCard.classList.remove('alert-danger', 'alert-warning', 'alert-success');
     const alertIconDiv = document.getElementById('alertIcon');
+
     if (finalBalance < 0) {
         summaryCard.classList.add('alert-danger');
         if (alertIconDiv) alertIconDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
@@ -424,6 +489,7 @@ function updateSummary() {
 }
 
 function updateLoansSummary() {
+    // *** THE FIX: Using correct optional chaining operator ***
     const loanTransactions = allData[currentMonth]?.expenses.filter(t => t.type === 'loan') || [];
     const loansContent = document.getElementById('loansSummaryContent');
     const noLoansMessage = document.getElementById('noLoansMessage');
@@ -461,6 +527,7 @@ function updateLoansSummary() {
 function updateBalanceIndicator() {
     const titleElement = document.querySelector('.header h1');
     const indicator = document.getElementById('balanceIndicator');
+    // *** THE FIX: Using correct optional chaining operator ***
     const totalIncome = allData[currentMonth]?.income.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0) || 0;
     const totalExpenses = allData[currentMonth]?.expenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0) || 0;
 
@@ -501,8 +568,11 @@ function moveItem(event, type, index, direction) {
     saveStateForUndo();
     event.stopPropagation();
     const arr = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
-    if (direction === 'up' && index > 0) [arr[index], arr[index - 1]] = [arr[index - 1], arr[index]];
-    else if (direction === 'down' && index < arr.length - 1) [arr[index], arr[index + 1]] = [arr[index + 1], arr[index]];
+    if (direction === 'up' && index > 0) {
+        [arr[index], arr[index - 1]] = [arr[index - 1], arr[index]];
+    } else if (direction === 'down' && index < arr.length - 1) {
+        [arr[index], arr[index + 1]] = [arr[index + 1], arr[index]];
+    }
     saveDataToLocal();
     render();
 }
@@ -553,7 +623,9 @@ function setFilter(type, filter) {
 
 function exportData() {
     const dataStr = JSON.stringify(allData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const dataBlob = new Blob([dataStr], {
+        type: 'application/json'
+    });
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
@@ -608,13 +680,32 @@ function showChart(type) {
         type: 'pie',
         data: {
             labels: labels,
-            datasets: [{ data: amounts, backgroundColor: colors, borderWidth: 2, borderColor: getComputedStyle(document.body).getPropertyValue('--card-bg') }]
+            datasets: [{
+                data: amounts,
+                backgroundColor: colors,
+                borderWidth: 2,
+                borderColor: getComputedStyle(document.body).getPropertyValue('--card-bg')
+            }]
         },
         options: {
-            responsive: true, maintainAspectRatio: false,
+            responsive: true,
+            maintainAspectRatio: false,
             plugins: {
-                legend: { position: 'bottom', labels: { padding: 15, font: { size: 14 }, color: getComputedStyle(document.body).getPropertyValue('--text-primary') } },
-                tooltip: { callbacks: { label: (c) => `${c.label}: ₪${c.parsed.toLocaleString('he-IL')} (${((c.parsed / c.dataset.data.reduce((a, b) => a + b, 0)) * 100).toFixed(1)}%)` } }
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 15,
+                        font: {
+                            size: 14
+                        },
+                        color: getComputedStyle(document.body).getPropertyValue('--text-primary')
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (c) => `${c.label}: ₪${c.parsed.toLocaleString('he-IL')} (${((c.parsed / c.dataset.data.reduce((a, b) => a + b, 0)) * 100).toFixed(1)}%)`
+                    }
+                }
             }
         }
     });
@@ -639,7 +730,11 @@ function deleteAllData() {
         saveStateForUndo();
         allData = {};
         currentMonth = getCurrentMonthKey();
-        allData[currentMonth] = { income: [], expenses: [], balance: 0 };
+        allData[currentMonth] = {
+            income: [],
+            expenses: [],
+            balance: 0
+        };
         document.getElementById('currentBalanceInput').value = 0;
         saveDataToLocal();
         render();
@@ -647,9 +742,7 @@ function deleteAllData() {
     });
 }
 
-function openModal(event, type, index = -1) {
-    if (typeof event === 'string') type = event;
-    else if (event) event.stopPropagation();
+function openModal(type, index = -1) {
     currentType = type;
     editingIndex = index;
     const modal = document.getElementById('transactionModal');
@@ -679,6 +772,7 @@ function openModal(event, type, index = -1) {
     descriptionInput.focus();
 }
 
+
 function closeModal() {
     document.getElementById('transactionModal').classList.remove('active');
 }
@@ -692,7 +786,13 @@ function saveTransaction() {
         openConfirmModal('שגיאה', 'נא למלא תיאור וסכום חיובי.', closeConfirmModal);
         return;
     }
-    const transaction = { id: Date.now(), description, amount, checked: true, type: selectedTransactionType };
+    const transaction = {
+        id: Date.now(),
+        description,
+        amount,
+        checked: true,
+        type: selectedTransactionType
+    };
 
     if (selectedTransactionType === 'loan') {
         const originalLoanAmount = parseFloat(document.getElementById('loanOriginalAmountInput').value);
@@ -712,7 +812,9 @@ function saveTransaction() {
     const list = currentType === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     if (editingIndex >= 0) {
         const existingTransaction = list[editingIndex];
-        list[editingIndex] = { ...existingTransaction, ...transaction };
+        list[editingIndex] = { ...existingTransaction,
+            ...transaction
+        };
     } else {
         list.push(transaction);
     }
@@ -727,8 +829,11 @@ function deleteTransaction(event, type, index) {
     const message = `האם למחוק את <b>"${transaction.description}"</b> בסך <b>₪${transaction.amount.toLocaleString('he-IL')}</b>?`;
     openConfirmModal('אישור מחיקת תנועה', message, () => {
         saveStateForUndo();
-        if (type === 'income') allData[currentMonth].income.splice(index, 1);
-        else allData[currentMonth].expenses.splice(index, 1);
+        if (type === 'income') {
+            allData[currentMonth].income.splice(index, 1);
+        } else {
+            allData[currentMonth].expenses.splice(index, 1);
+        }
         saveDataToLocal();
         render();
         closeConfirmModal();
@@ -751,6 +856,7 @@ function editAmount(event, type, index) {
     const amountWrapper = event.currentTarget;
     if (amountWrapper.classList.contains('editing')) return;
     if (currentEditingElement) currentEditingElement.querySelector('.inline-edit-input').blur();
+
     const amountInput = amountWrapper.querySelector('.inline-edit-input');
     const transaction = type === 'income' ? allData[currentMonth].income[index] : allData[currentMonth].expenses[index];
     currentEditingElement = amountWrapper;
@@ -765,6 +871,7 @@ function saveAmount(event, type, index) {
     const newAmount = parseFloat(input.value);
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     const originalAmount = list[index].amount;
+
     if (currentEditingElement) {
         currentEditingElement.classList.remove('editing');
         currentEditingElement = null;
@@ -778,9 +885,10 @@ function saveAmount(event, type, index) {
 }
 
 function handleEditKeys(event) {
-    if (event.key === 'Enter') event.target.blur();
-    else if (event.key === 'Escape') {
-        event.target.value = -1;
+    if (event.key === 'Enter') {
+        event.target.blur();
+    } else if (event.key === 'Escape') {
+        event.target.value = -1; // Trigger re-render without change
         event.target.blur();
     }
 }
@@ -789,6 +897,7 @@ function openApplyOptionsModal(type, index) {
     const transaction = type === 'income' ? allData[currentMonth].income[index] : allData[currentMonth].expenses[index];
     const modal = document.getElementById('applyOptionsModal');
     document.getElementById('applyOptionsTransactionInfo').innerHTML = `<span>${transaction.description}</span><span class="${type === 'income' ? 'positive' : 'negative'}">₪${transaction.amount.toLocaleString('he-IL')}</span>`;
+
     modal.querySelectorAll('.apply-option').forEach(option => {
         const newOption = option.cloneNode(true);
         option.parentNode.replaceChild(newOption, option);
@@ -804,13 +913,19 @@ function handleApplyAction(type, index, action) {
     const amount = transaction.amount;
     let currentBalanceValue = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
 
-    if (type === 'income') currentBalanceValue += amount;
-    else currentBalanceValue -= amount;
+    if (type === 'income') {
+        currentBalanceValue += amount;
+    } else {
+        currentBalanceValue -= amount;
+    }
     document.getElementById('currentBalanceInput').value = currentBalanceValue;
-    
-    if (action === 'apply-delete') list.splice(index, 1);
-    else if (action === 'apply-zero') list[index].amount = 0;
-    
+
+    if (action === 'apply-delete') {
+        list.splice(index, 1);
+    } else if (action === 'apply-zero') {
+        list[index].amount = 0;
+    }
+
     saveDataToLocal();
     render();
     closeApplyOptionsModal();
@@ -839,67 +954,190 @@ function render() {
     const currentData = allData[currentMonth];
     if (!currentData) return;
 
+    // Render Income List
     let filteredIncome = currentData.income;
     if (filterIncome !== 'all') {
-        if (filterIncome === 'active') filteredIncome = currentData.income.filter(t => t.checked);
-        else if (filterIncome === 'inactive') filteredIncome = currentData.income.filter(t => !t.checked);
-        else filteredIncome = currentData.income.filter(t => t.type === filterIncome);
+        if (filterIncome === 'active') {
+            filteredIncome = currentData.income.filter(t => t.checked);
+        } else if (filterIncome === 'inactive') {
+            filteredIncome = currentData.income.filter(t => !t.checked);
+        } else {
+            filteredIncome = currentData.income.filter(t => t.type === filterIncome);
+        }
     }
-    
-    const incomeList = document.getElementById('incomeList');
-    incomeList.innerHTML = filteredIncome.length === 0 ? '<div class="empty-state">אין הכנסות להצגה</div>' : filteredIncome.map((t, i) => {
-        let badgeClass = 'badge-regular', badgeText = 'קבוע';
-        if (t.type === 'onetime') { badgeClass = 'badge-onetime'; badgeText = 'חד-פעמי'; }
-        return `<div class="transaction-wrapper"><div class="transaction-item ${!t.checked ? 'inactive' : ''}"><div class="transaction-info"><div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'income', ${i})"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><div class="transaction-details"><div class="transaction-text">${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div></div></div><div class="transaction-amount" onclick="editAmount(event, 'income', ${i})"><span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span><input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'income', ${i})"></div><div class="item-controls"><div class="sort-buttons ${sortModeIncome ? 'visible' : ''}"><button class="sort-btn" onclick="moveItem(event, 'income', ${i}, 'up')" ${i === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button><button class="sort-btn" onclick="moveItem(event, 'income', ${i}, 'down')" ${i === filteredIncome.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button></div><div class="transaction-actions"><button class="action-btn edit" onclick="openModal(event, 'income', ${i})" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button><button class="action-btn apply" onclick="openApplyOptionsModal('income', ${i})" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button><button class="action-btn delete" onclick="deleteTransaction(event, 'income', ${i})" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button></div></div></div></div>`;
-    }).join('');
 
+    const incomeList = document.getElementById('incomeList');
+    if (filteredIncome.length === 0) {
+        incomeList.innerHTML = '<div class="empty-state">אין הכנסות להצגה</div>';
+    } else {
+        incomeList.innerHTML = filteredIncome.map((t, i) => {
+            const originalIndex = currentData.income.findIndex(item => item.id === t.id);
+            let badgeClass = 'badge-regular';
+            let badgeText = 'קבוע';
+            if (t.type === 'onetime') {
+                badgeClass = 'badge-onetime';
+                badgeText = 'חד-פעמי';
+            }
+            return `
+                <div class="transaction-wrapper">
+                    <div class="transaction-item ${!t.checked ? 'inactive' : ''}">
+                        <div class="transaction-info">
+                            <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'income', ${originalIndex})">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </div>
+                            <div class="transaction-details">
+                                <div class="transaction-text">${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
+                            </div>
+                        </div>
+                        <div class="transaction-amount" onclick="editAmount(event, 'income', ${originalIndex})">
+                            <span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>
+                            <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'income', ${originalIndex})">
+                        </div>
+                        <div class="item-controls">
+                            <div class="sort-buttons ${sortModeIncome ? 'visible' : ''}">
+                                <button class="sort-btn" onclick="moveItem(event, 'income', ${originalIndex}, 'up')" ${originalIndex === 0 ? 'disabled' : ''}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                                </button>
+                                <button class="sort-btn" onclick="moveItem(event, 'income', ${originalIndex}, 'down')" ${originalIndex === currentData.income.length - 1 ? 'disabled' : ''}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                </button>
+                            </div>
+                            <div class="transaction-actions">
+                                <button class="action-btn edit" onclick="openModal('income', ${originalIndex})" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+                                <button class="action-btn apply" onclick="openApplyOptionsModal('income', ${originalIndex})" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
+                                <button class="action-btn delete" onclick="deleteTransaction(event, 'income', ${originalIndex})" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Render Expense List
     let filteredExpenses = currentData.expenses;
     if (filterExpense !== 'all') {
-        if (filterExpense === 'active') filteredExpenses = currentData.expenses.filter(t => t.checked);
-        else if (filterExpense === 'inactive') filteredExpenses = currentData.expenses.filter(t => !t.checked);
-        else filteredExpenses = currentData.expenses.filter(t => t.type === filterExpense);
-    }
-    const expenseList = document.getElementById('expenseList');
-    expenseList.innerHTML = filteredExpenses.length === 0 ? '<div class="empty-state">אין הוצאות להצגה</div>' : filteredExpenses.map((t, i) => {
-        let badgeClass = 'badge-regular', badgeText = 'קבוע';
-        const isCompleted = t.completed;
-        if (t.type === 'loan') badgeClass = isCompleted ? 'badge-loan completed' : 'badge-loan', badgeText = isCompleted ? 'שולמה' : 'הלוואה';
-        else if (t.type === 'variable') badgeClass = 'badge-variable', badgeText = `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>&nbsp; כרטיס אשראי`;
-        else if (t.type === 'onetime') badgeClass = 'badge-onetime', badgeText = 'חד-פעמי';
-        const loanDetails = (t.type === 'loan' && t.originalLoanAmount) ? `<div class="loan-original-amount">סכום הלוואה: ₪${t.originalLoanAmount.toLocaleString('he-IL')}</div>` : '';
-        let progressBar = '';
-        if (t.type === 'loan' && t.loanTotal) {
-            const percentage = (t.loanCurrent / t.loanTotal) * 100;
-            const amountPaid = t.amount * t.loanCurrent;
-            const isComplete = t.loanCurrent >= t.loanTotal;
-            progressBar = `<div class="loan-progress ${t.isExpanded ? 'visible' : ''}"><div class="loan-progress-container"><div class="progress-bar-container"><div class="progress-bar-fill" style="width: ${percentage}%"></div></div><div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div></div><button class="loan-next-payment-btn" onclick="nextLoanPayment(event, 'expense', ${i})" ${isComplete ? 'disabled' : ''}>${isComplete ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'}</button></div>`;
+        if (filterExpense === 'active') {
+            filteredExpenses = currentData.expenses.filter(t => t.checked);
+        } else if (filterExpense === 'inactive') {
+            filteredExpenses = currentData.expenses.filter(t => !t.checked);
+        } else {
+            filteredExpenses = currentData.expenses.filter(t => t.type === filterExpense);
         }
-        const itemHTML = `<div class="transaction-item ${t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${isCompleted ? 'completed' : ''}" ${t.type === 'loan' ? `onclick="toggleLoanProgress(event, ${i})"` : ''}><div class="transaction-info"><div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'expense', ${i})"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><div class="transaction-details"><div class="transaction-text">${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>${loanDetails}</div></div><div class="transaction-amount" onclick="editAmount(event, 'expense', ${i})"><span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span><input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'expense', ${i})"></div><div class="item-controls"><div class="sort-buttons ${sortModeExpense ? 'visible' : ''}"><button class="sort-btn" onclick="moveItem(event, 'expense', ${i}, 'up')" ${i === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button><button class="sort-btn" onclick="moveItem(event, 'expense', ${i}, 'down')" ${i === filteredExpenses.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button></div><div class="transaction-actions"><button class="action-btn edit" onclick="openModal(event, 'expense', ${i})" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button><button class="action-btn apply" onclick="openApplyOptionsModal('expense', ${i})" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button><button class="action-btn delete" onclick="deleteTransaction(event, 'expense', ${i})" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button></div></div></div>`;
-        return `<div class="transaction-wrapper">${itemHTML}${progressBar}</div>`;
-    }).join('');
+    }
 
+    const expenseList = document.getElementById('expenseList');
+    if (filteredExpenses.length === 0) {
+        expenseList.innerHTML = '<div class="empty-state">אין הוצאות להצגה</div>';
+    } else {
+        expenseList.innerHTML = filteredExpenses.map((t, i) => {
+            const originalIndex = currentData.expenses.findIndex(item => item.id === t.id);
+            let badgeClass = 'badge-regular',
+                badgeText = 'קבוע';
+            const isCompleted = t.completed;
+
+            if (t.type === 'loan') {
+                badgeClass = isCompleted ? 'badge-loan completed' : 'badge-loan';
+                badgeText = isCompleted ? 'שולמה' : 'הלוואה';
+            } else if (t.type === 'variable') {
+                badgeClass = 'badge-variable';
+                badgeText = `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>&nbsp; כרטיס אשראי`;
+            } else if (t.type === 'onetime') {
+                badgeClass = 'badge-onetime';
+                badgeText = 'חד-פעמי';
+            }
+
+            const loanDetails = (t.type === 'loan' && t.originalLoanAmount) ? `<div class="loan-original-amount">סכום הלוואה: ₪${t.originalLoanAmount.toLocaleString('he-IL')}</div>` : '';
+            let progressBar = '';
+
+            if (t.type === 'loan' && t.loanTotal) {
+                const percentage = (t.loanCurrent / t.loanTotal) * 100;
+                const amountPaid = t.amount * t.loanCurrent;
+                const isComplete = t.loanCurrent >= t.loanTotal;
+                progressBar = `
+                    <div class="loan-progress ${t.isExpanded ? 'visible' : ''}">
+                        <div class="loan-progress-container">
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill" style="width: ${percentage}%"></div>
+                            </div>
+                            <div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div>
+                        </div>
+                        <button class="loan-next-payment-btn" onclick="nextLoanPayment(event, 'expense', ${originalIndex})" ${isComplete ? 'disabled' : ''}>
+                            ${isComplete ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'}
+                        </button>
+                    </div>
+                `;
+            }
+
+            const itemHTML = `
+                <div class="transaction-item ${t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${isCompleted ? 'completed' : ''}" ${t.type === 'loan' ? `onclick="toggleLoanProgress('expense', ${originalIndex})"` : ''}>
+                    <div class="transaction-info">
+                        <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'expense', ${originalIndex})">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        </div>
+                        <div class="transaction-details">
+                            <div class="transaction-text">${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
+                            ${loanDetails}
+                        </div>
+                    </div>
+                    <div class="transaction-amount" onclick="editAmount(event, 'expense', ${originalIndex})">
+                        <span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>
+                        <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'expense', ${originalIndex})">
+                    </div>
+                    <div class="item-controls">
+                        <div class="sort-buttons ${sortModeExpense ? 'visible' : ''}">
+                            <button class="sort-btn" onclick="moveItem(event, 'expense', ${originalIndex}, 'up')" ${originalIndex === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
+                            <button class="sort-btn" onclick="moveItem(event, 'expense', ${originalIndex}, 'down')" ${originalIndex === currentData.expenses.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+                        </div>
+                        <div class="transaction-actions">
+                            <button class="action-btn edit" onclick="openModal('expense', ${originalIndex})" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+                            <button class="action-btn apply" onclick="openApplyOptionsModal('expense', ${originalIndex})" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
+                            <button class="action-btn delete" onclick="deleteTransaction(event, 'expense', ${originalIndex})" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            return `<div class="transaction-wrapper">${itemHTML}${progressBar}</div>`;
+        }).join('');
+    }
+
+
+    // Update Totals and Summaries
     const incomeTotal = filteredIncome.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const expenseTotal = filteredExpenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const currentBalanceValue = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
     const finalBalance = currentBalanceValue - expenseTotal + incomeTotal;
 
-    const labelMap = { all: 'סה״כ', regular: 'סה״כ קבועות', variable: 'סה״כ כ.אשראי', onetime: 'סה״כ חד-פעמיות', active: 'סה״כ פעילות', inactive: 'סה״כ לא פעילות', loan: 'סה״כ הלוואות' };
+    const labelMap = {
+        all: 'סה״כ',
+        regular: 'סה״כ קבועות',
+        variable: 'סה״כ כ.אשראי',
+        onetime: 'סה״כ חד-פעמיות',
+        active: 'סה״כ פעילות',
+        inactive: 'סה״כ לא פעילות',
+        loan: 'סה״כ הלוואות'
+    };
     document.getElementById('incomeTotalLabel').textContent = filterIncome === 'all' ? 'סה״כ הכנסות' : labelMap[filterIncome];
     document.getElementById('expenseTotalLabel').textContent = filterExpense === 'all' ? 'סה״כ הוצאות' : labelMap[filterExpense];
 
     const totalActiveIncome = currentData.income.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
     const totalActiveExpenses = currentData.expenses.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
+
     document.getElementById('incomeCollapsedSummary').innerHTML = `<span class="summary-label">סה״כ הכנסות:</span> <span class="summary-value">₪${totalActiveIncome.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
     document.getElementById('expenseCollapsedSummary').innerHTML = `<span class="summary-label">סה״כ הוצאות:</span> <span class="summary-value">₪${totalActiveExpenses.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
     document.getElementById('summaryCollapsedSummary').innerHTML = `<span class="summary-label">עו"ש צפוי:</span> <span class="summary-value ${finalBalance >= 0 ? 'positive' : 'negative'}">₪${finalBalance.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
-    document.getElementById('incomeTotal').textContent = '₪' + incomeTotal.toLocaleString('he-IL', { minimumFractionDigits: 2 });
-    document.getElementById('expenseTotal').textContent = '₪' + expenseTotal.toLocaleString('he-IL', { minimumFractionDigits: 2 });
-    
+    document.getElementById('incomeTotal').textContent = '₪' + incomeTotal.toLocaleString('he-IL', {
+        minimumFractionDigits: 2
+    });
+    document.getElementById('expenseTotal').textContent = '₪' + expenseTotal.toLocaleString('he-IL', {
+        minimumFractionDigits: 2
+    });
+
     document.querySelector('.income-card .chart-btn').disabled = filterIncome !== 'all';
     document.querySelector('.income-card .sort-mode-btn').disabled = filterIncome !== 'all';
     document.querySelector('.expense-card .chart-btn').disabled = filterExpense !== 'all';
     document.querySelector('.expense-card .sort-mode-btn').disabled = filterExpense !== 'all';
-    
+
     populateMonthJumper();
     updateMonthDisplay();
     updateBalanceIndicator();
@@ -907,17 +1145,23 @@ function render() {
     updateSummary();
 }
 
+// ================================================
+// =========== Event Listeners Setup ===========
+// ================================================
 document.addEventListener('DOMContentLoaded', () => {
     loadTheme();
     loadHeaderPinState();
     loadData();
     loadCardStates();
     setupBalanceControls();
+
     document.getElementById('prevMonthBtn').addEventListener('click', () => navigateMonths(-1));
     document.getElementById('nextMonthBtn').addEventListener('click', () => navigateMonths(1));
     document.getElementById('deleteMonthBtn').addEventListener('click', confirmDeleteMonth);
     document.getElementById('monthJumperBtn').addEventListener('click', toggleMonthJumper);
-    document.getElementById('syncBtn').addEventListener('click', syncData);
+
+    document.getElementById('loadFromCloudBtn').addEventListener('click', handleLoadFromCloud);
+    document.getElementById('saveToCloudBtn').addEventListener('click', handleSaveToCloud);
 
     document.querySelectorAll('#filterDropdownIncome .filter-option, #filterDropdownExpense .filter-option').forEach(option => {
         option.addEventListener('click', (e) => {
@@ -936,7 +1180,7 @@ document.addEventListener('DOMContentLoaded', () => {
             closeApplyOptionsModal();
         }
     });
-    
+
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.dropdown-container')) {
             document.getElementById('filterDropdownIncome').classList.remove('active');
@@ -950,14 +1194,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.target.id === id) e.target.classList.remove('active');
         });
     });
-    
+
     document.body.classList.remove('preload');
 });
 
 function openConfirmModal(title, text, onConfirm, onCancel = closeConfirmModal) {
     document.getElementById('confirmModalTitle').textContent = title;
     document.getElementById('confirmModalText').innerHTML = text;
-    
+
     const confirmBtn = document.getElementById('confirmModalConfirmBtn');
     const cancelBtn = document.querySelector('#confirmModal .modal-btn-cancel');
 
@@ -969,13 +1213,12 @@ function openConfirmModal(title, text, onConfirm, onCancel = closeConfirmModal) 
     cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
     newCancelBtn.addEventListener('click', onCancel);
 
-    const isInfo = title === 'שגיאה' || title === 'מידע';
+    const isInfo = title === 'שגיאה' || title === 'מידע' || title === 'הצלחה';
     newConfirmBtn.style.display = isInfo ? 'none' : 'flex';
     newCancelBtn.textContent = isInfo ? 'סגור' : 'ביטול';
 
     document.getElementById('confirmModal').classList.add('active');
 }
-
 
 function closeConfirmModal() {
     document.getElementById('confirmModal').classList.remove('active');
