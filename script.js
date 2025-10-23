@@ -57,8 +57,9 @@ async function loadFromCloud(password) {
         if (!response.ok) throw new Error('Failed to fetch data');
         const cloudData = await response.json();
         
-        if (Object.keys(cloudData.record).length === 0 || !cloudData.record.status) {
-            console.log("Cloud bin is empty. Will save local data.");
+        // בדוק אם ה-bin במצב התחלתי או לא מכיל את מבנה הנתונים הצפוי
+        if (cloudData.record.status === "ready" || !cloudData.record.data) {
+            console.log("Cloud bin is empty or in initial state.");
             return 'empty'; 
         }
 
@@ -79,8 +80,9 @@ async function loadFromCloud(password) {
 }
 
 async function saveToCloud(password) {
-    const dataToEncrypt = { data: encryptData(allData, password) };
-    if (!dataToEncrypt.data) return 'encryption_failed';
+    // עוטפים את המידע המוצפן באובייקט כדי לוודא שה-JSON תמיד תקין
+    const dataToSave = { data: encryptData(allData, password) };
+    if (!dataToSave.data) return 'encryption_failed';
 
     try {
         const response = await fetch(BIN_URL, {
@@ -89,7 +91,7 @@ async function saveToCloud(password) {
                 'Content-Type': 'application/json',
                 'X-Master-Key': MASTER_KEY
             },
-            body: JSON.stringify(dataToEncrypt)
+            body: JSON.stringify(dataToSave)
         });
         if (!response.ok) throw new Error('Failed to save data');
         return 'success';
@@ -120,6 +122,7 @@ async function syncData() {
         syncBtnSpan.textContent = "שגיאת רשת";
         syncBtn.classList.add('error');
     } else {
+        // אם הטעינה הצליחה, או אם הענן היה ריק, נשמור את המצב הנוכחי חזרה לענן
         const saveResult = await saveToCloud(password);
         if (saveResult === 'success') {
             syncBtnSpan.textContent = "סונכרן!";
@@ -253,6 +256,7 @@ function jumpToMonth(monthKey) {
 
 function populateMonthJumper() {
     const jumperList = document.getElementById('monthJumperList');
+    if(!jumperList) return;
     const months = Object.keys(allData).sort((a, b) => b.localeCompare(a));
     
     jumperList.innerHTML = '';
@@ -844,11 +848,10 @@ function render() {
     }
     
     const incomeList = document.getElementById('incomeList');
-    incomeList.innerHTML = filteredIncome.length === 0 ? '<div class="empty-state">אין הכנסות להצגה</div>' : filteredIncome.map((t) => {
-        const i = currentData.income.indexOf(t);
+    incomeList.innerHTML = filteredIncome.length === 0 ? '<div class="empty-state">אין הכנסות להצגה</div>' : filteredIncome.map((t, i) => {
         let badgeClass = 'badge-regular', badgeText = 'קבוע';
         if (t.type === 'onetime') { badgeClass = 'badge-onetime'; badgeText = 'חד-פעמי'; }
-        return `<div class="transaction-wrapper"><div class="transaction-item ${!t.checked ? 'inactive' : ''}"><div class="transaction-info"><div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'income', ${i})"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><div class="transaction-details"><div class="transaction-text">${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div></div></div><div class="transaction-amount" onclick="editAmount(event, 'income', ${i})"><span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span><input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'income', ${i})"></div><div class="item-controls"><div class="sort-buttons ${sortModeIncome ? 'visible' : ''}"><button class="sort-btn" onclick="moveItem(event, 'income', ${i}, 'up')" ${i === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button><button class="sort-btn" onclick="moveItem(event, 'income', ${i}, 'down')" ${i === currentData.income.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button></div><div class="transaction-actions"><button class="action-btn edit" onclick="openModal(event, 'income', ${i})" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button><button class="action-btn apply" onclick="openApplyOptionsModal('income', ${i})" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button><button class="action-btn delete" onclick="deleteTransaction(event, 'income', ${i})" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button></div></div></div></div>`;
+        return `<div class="transaction-wrapper"><div class="transaction-item ${!t.checked ? 'inactive' : ''}"><div class="transaction-info"><div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'income', ${i})"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><div class="transaction-details"><div class="transaction-text">${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div></div></div><div class="transaction-amount" onclick="editAmount(event, 'income', ${i})"><span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span><input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'income', ${i})"></div><div class="item-controls"><div class="sort-buttons ${sortModeIncome ? 'visible' : ''}"><button class="sort-btn" onclick="moveItem(event, 'income', ${i}, 'up')" ${i === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button><button class="sort-btn" onclick="moveItem(event, 'income', ${i}, 'down')" ${i === filteredIncome.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button></div><div class="transaction-actions"><button class="action-btn edit" onclick="openModal(event, 'income', ${i})" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button><button class="action-btn apply" onclick="openApplyOptionsModal('income', ${i})" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button><button class="action-btn delete" onclick="deleteTransaction(event, 'income', ${i})" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button></div></div></div></div>`;
     }).join('');
 
     let filteredExpenses = currentData.expenses;
@@ -858,8 +861,7 @@ function render() {
         else filteredExpenses = currentData.expenses.filter(t => t.type === filterExpense);
     }
     const expenseList = document.getElementById('expenseList');
-    expenseList.innerHTML = filteredExpenses.length === 0 ? '<div class="empty-state">אין הוצאות להצגה</div>' : filteredExpenses.map((t) => {
-        const i = currentData.expenses.indexOf(t);
+    expenseList.innerHTML = filteredExpenses.length === 0 ? '<div class="empty-state">אין הוצאות להצגה</div>' : filteredExpenses.map((t, i) => {
         let badgeClass = 'badge-regular', badgeText = 'קבוע';
         const isCompleted = t.completed;
         if (t.type === 'loan') badgeClass = isCompleted ? 'badge-loan completed' : 'badge-loan', badgeText = isCompleted ? 'שולמה' : 'הלוואה';
@@ -873,7 +875,7 @@ function render() {
             const isComplete = t.loanCurrent >= t.loanTotal;
             progressBar = `<div class="loan-progress ${t.isExpanded ? 'visible' : ''}"><div class="loan-progress-container"><div class="progress-bar-container"><div class="progress-bar-fill" style="width: ${percentage}%"></div></div><div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div></div><button class="loan-next-payment-btn" onclick="nextLoanPayment(event, 'expense', ${i})" ${isComplete ? 'disabled' : ''}>${isComplete ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'}</button></div>`;
         }
-        const itemHTML = `<div class="transaction-item ${t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${isCompleted ? 'completed' : ''}" ${t.type === 'loan' ? `onclick="toggleLoanProgress('expense', ${i})"` : ''}><div class="transaction-info"><div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'expense', ${i})"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><div class="transaction-details"><div class="transaction-text">${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>${loanDetails}</div></div><div class="transaction-amount" onclick="editAmount(event, 'expense', ${i})"><span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span><input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'expense', ${i})"></div><div class="item-controls"><div class="sort-buttons ${sortModeExpense ? 'visible' : ''}"><button class="sort-btn" onclick="moveItem(event, 'expense', ${i}, 'up')" ${i === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button><button class="sort-btn" onclick="moveItem(event, 'expense', ${i}, 'down')" ${i === currentData.expenses.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button></div><div class="transaction-actions"><button class="action-btn edit" onclick="openModal(event, 'expense', ${i})" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button><button class="action-btn apply" onclick="openApplyOptionsModal('expense', ${i})" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button><button class="action-btn delete" onclick="deleteTransaction(event, 'expense', ${i})" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button></div></div></div>`;
+        const itemHTML = `<div class="transaction-item ${t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${isCompleted ? 'completed' : ''}" ${t.type === 'loan' ? `onclick="toggleLoanProgress(event, ${i})"` : ''}><div class="transaction-info"><div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'expense', ${i})"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><div class="transaction-details"><div class="transaction-text">${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>${loanDetails}</div></div><div class="transaction-amount" onclick="editAmount(event, 'expense', ${i})"><span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span><input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'expense', ${i})"></div><div class="item-controls"><div class="sort-buttons ${sortModeExpense ? 'visible' : ''}"><button class="sort-btn" onclick="moveItem(event, 'expense', ${i}, 'up')" ${i === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button><button class="sort-btn" onclick="moveItem(event, 'expense', ${i}, 'down')" ${i === filteredExpenses.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button></div><div class="transaction-actions"><button class="action-btn edit" onclick="openModal(event, 'expense', ${i})" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button><button class="action-btn apply" onclick="openApplyOptionsModal('expense', ${i})" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button><button class="action-btn delete" onclick="deleteTransaction(event, 'expense', ${i})" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button></div></div></div>`;
         return `<div class="transaction-wrapper">${itemHTML}${progressBar}</div>`;
     }).join('');
 
@@ -919,10 +921,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('syncBtn').addEventListener('click', syncData);
 
     document.querySelectorAll('#filterDropdownIncome .filter-option, #filterDropdownExpense .filter-option').forEach(option => {
-        option.addEventListener('click', (e) => {
-            const dropdown = e.target.closest('.filter-dropdown');
+        option.addEventListener('click', () => {
+            const dropdown = option.closest('.filter-dropdown');
             const type = dropdown.id.includes('Income') ? 'income' : 'expense';
-            const filter = e.target.closest('.filter-option').dataset.filter;
+            const filter = option.dataset.filter;
             setFilter(type, filter);
         });
     });
