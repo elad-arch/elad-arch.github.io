@@ -67,6 +67,40 @@ body:not(.preload) .collapse-btn svg {
     transition: text-shadow 0.4s ease;
 }
 
+/* =========== עיצוב חדש: ניווט חודשים =========== */
+.month-navigator {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+.month-navigator h2 {
+    font-size: 1.8em;
+    font-weight: 700;
+    color: var(--header-text-color);
+    min-width: 200px;
+}
+.month-nav-btn {
+    background: var(--card-bg);
+    border: 2px solid var(--border-color);
+    color: var(--text-primary);
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+.month-nav-btn:hover {
+    border-color: #8b5cf6;
+    color: #8b5cf6;
+    transform: scale(1.05);
+}
+/* ============================================= */
+
 .header h1.title-positive-balance {
     text-shadow: 0 0 12px rgba(16, 185, 129, 0.8);
 }
@@ -163,6 +197,25 @@ body:not(.preload) .collapse-btn svg {
     padding: 10px 20px;
     border-radius: 9999px;
     gap: 8px;
+}
+
+.btn-delete-month {
+    background: #fee2e2;
+    color: #ef4444;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+.btn-delete-month:hover {
+    background: #ef4444;
+    color: white;
 }
 
 .btn-theme {
@@ -773,6 +826,8 @@ body:not(.preload) .collapse-btn svg {
 @media (max-width: 768px) {
     .main-grid { grid-template-columns: 1fr; }
     .header h1 { font-size: 1.8em; }
+    .month-navigator h2 { font-size: 1.5em; min-width: 150px; }
+    .month-nav-btn { width: 40px; height: 40px; }
     .summary-card .summary-row,
     .loans-summary-card .summary-row {
         flex-direction: column;
