@@ -747,7 +747,7 @@ function deleteAllData() {
 
 function openModal(type, id = null) {
     currentType = type;
-    editingId = id; // שימוש ב-ID במקום אינדקס
+    editingId = id;
     const modal = document.getElementById('transactionModal');
     const title = document.getElementById('modalTitle');
     const [descriptionInput, amountInput, loanOriginalAmountInput, loanTotalInput, loanCurrentInput] = ['descriptionInput', 'amountInput', 'loanOriginalAmountInput', 'loanTotalInput', 'loanCurrentInput'].map(id => document.getElementById(id));
@@ -781,7 +781,7 @@ function openModal(type, id = null) {
 
 function closeModal() {
     document.getElementById('transactionModal').classList.remove('active');
-    editingId = null; // איפוס ה-ID בעת סגירת המודאל
+    editingId = null;
 }
 
 function saveTransaction() {
@@ -832,7 +832,6 @@ function saveTransaction() {
     } else {
         const newTransaction = {
             ...transactionData,
-            // --- התיקון כאן: שינוי שיטת יצירת ה-ID ---
             id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             checked: true
         };
@@ -927,7 +926,7 @@ function handleEditKeys(event) {
     if (event.key === 'Enter') {
         event.target.blur();
     } else if (event.key === 'Escape') {
-        event.target.value = -1; // Trigger re-render without change
+        event.target.value = -1;
         event.target.blur();
     }
 }
@@ -957,16 +956,13 @@ function handleApplyAction(type, id, action) {
     const amount = transaction.amount;
     let currentBalanceValue = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
 
-    // --- התיקון כאן: "החל בלבד" לא משנה את היתרה ---
-    if (action !== 'apply-only') {
-        if (type === 'income') {
-            currentBalanceValue += amount;
-        } else {
-            currentBalanceValue -= amount;
-        }
-        document.getElementById('currentBalanceInput').value = currentBalanceValue;
+    if (type === 'income') {
+        currentBalanceValue += amount;
+    } else {
+        currentBalanceValue -= amount;
     }
-
+    document.getElementById('currentBalanceInput').value = currentBalanceValue;
+    
     if (action === 'apply-delete') {
         const indexToDelete = list.findIndex(t => t.id == id);
         if (indexToDelete > -1) list.splice(indexToDelete, 1);
