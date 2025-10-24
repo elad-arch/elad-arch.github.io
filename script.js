@@ -11,7 +11,7 @@ const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
 let allData = {};
 let currentMonth;
 let currentType = 'income';
-let editingId = null; // שונה מ-editingIndex ל-editingId
+let editingId = null;
 let chartInstance = null;
 let sortModeIncome = false;
 let sortModeExpense = false;
@@ -153,6 +153,7 @@ async function handleSaveToCloud() {
         saveBtn.classList.add('error');
     } else if (result === 'success') {
         saveBtn.classList.add('success');
+        openConfirmModal('הצלחה', 'הנתונים נשמרו בענן!', closeConfirmModal);
     }
 
     setTimeout(() => {
@@ -214,14 +215,14 @@ function navigateMonths(direction) {
                 allData[currentMonth].income = allData[prevMonthKey].income
                     .filter(t => t.type === 'regular')
                     .map(t => ({ ...t,
-                        id: Date.now() + Math.random(),
+                        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                         checked: true
                     }));
 
                 allData[currentMonth].expenses = allData[prevMonthKey].expenses
                     .filter(t => t.type === 'regular' || t.type === 'loan')
                     .map(t => ({ ...t,
-                        id: Date.now() + Math.random(),
+                        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                         checked: true
                     }));
             }
@@ -792,8 +793,7 @@ function saveTransaction() {
         openConfirmModal('שגיאה', 'נא למלא תיאור וסכום חיובי.', closeConfirmModal);
         return;
     }
-    
-    // יצירת אובייקט תנועה בסיסי
+
     const transactionData = {
         description,
         amount,
@@ -812,28 +812,32 @@ function saveTransaction() {
         transactionData.loanTotal = loanTotal;
         transactionData.loanCurrent = loanCurrent;
         transactionData.completed = transactionData.loanCurrent >= transactionData.loanTotal;
-        transactionData.checked = !transactionData.completed;
     }
 
     const list = currentType === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
-    
+
     if (editingId) {
-        // מצב עריכה
         const indexToUpdate = list.findIndex(t => t.id == editingId);
         if (indexToUpdate > -1) {
             const existingTransaction = list[indexToUpdate];
-            list[indexToUpdate] = { ...existingTransaction, ...transactionData };
+            let checkedStatus = existingTransaction.checked;
+            if (transactionData.type === 'loan') {
+                checkedStatus = !transactionData.completed;
+            }
+            list[indexToUpdate] = { ...existingTransaction,
+                ...transactionData,
+                checked: checkedStatus
+            };
         }
     } else {
-        // מצב הוספה
         const newTransaction = {
             ...transactionData,
-            id: Date.now() + Math.random(), // ID ייחודי וחזק יותר
+            // --- התיקון כאן: שינוי שיטת יצירת ה-ID ---
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             checked: true
         };
-        // וודא שנתוני הלוואה מקבלים checked מתאים
         if (newTransaction.type === 'loan') {
-             newTransaction.checked = !newTransaction.completed;
+            newTransaction.checked = !newTransaction.completed;
         }
         list.push(newTransaction);
     }
@@ -842,7 +846,6 @@ function saveTransaction() {
     render();
     closeModal();
 }
-
 
 function deleteTransaction(event, type, id) {
     event.stopPropagation();
@@ -889,8 +892,7 @@ function editAmount(event, type, id) {
     if (!transaction) return;
 
     currentEditingElement = amountWrapper;
-    // שמירת ה-ID על האלמנט לצורך שימוש בפונקציית השמירה
-    amountWrapper.dataset.id = id; 
+    amountWrapper.dataset.id = id;
     amountWrapper.classList.add('editing');
     amountInput.value = transaction.amount;
     amountInput.focus();
@@ -902,7 +904,7 @@ function saveAmount(event, type) {
     const amountWrapper = input.closest('.transaction-amount');
     const id = amountWrapper.dataset.id;
     const newAmount = parseFloat(input.value);
-    
+
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     const transaction = list.find(t => t.id == id);
 
@@ -910,15 +912,16 @@ function saveAmount(event, type) {
         currentEditingElement.classList.remove('editing');
         currentEditingElement = null;
     }
-    
+
     if (transaction && !isNaN(newAmount) && newAmount >= 0 && newAmount !== transaction.amount) {
         saveStateForUndo();
         transaction.amount = newAmount;
     }
-    
+
     saveDataToLocal();
     render();
 }
+
 
 function handleEditKeys(event) {
     if (event.key === 'Enter') {
@@ -954,7 +957,8 @@ function handleApplyAction(type, id, action) {
     const amount = transaction.amount;
     let currentBalanceValue = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
 
-    if (action !== 'apply-only') { // אם הפעולה היא לא רק החלה
+    // --- התיקון כאן: "החל בלבד" לא משנה את היתרה ---
+    if (action !== 'apply-only') {
         if (type === 'income') {
             currentBalanceValue += amount;
         } else {
@@ -962,7 +966,6 @@ function handleApplyAction(type, id, action) {
         }
         document.getElementById('currentBalanceInput').value = currentBalanceValue;
     }
-
 
     if (action === 'apply-delete') {
         const indexToDelete = list.findIndex(t => t.id == id);
@@ -999,15 +1002,14 @@ function render() {
     const currentData = allData[currentMonth];
     if (!currentData) return;
 
-    // Render Income List
-    let filteredIncome = currentData.income;
+    let filteredIncome = [...currentData.income];
     if (filterIncome !== 'all') {
         if (filterIncome === 'active') {
-            filteredIncome = currentData.income.filter(t => t.checked);
+            filteredIncome = filteredIncome.filter(t => t.checked);
         } else if (filterIncome === 'inactive') {
-            filteredIncome = currentData.income.filter(t => !t.checked);
+            filteredIncome = filteredIncome.filter(t => !t.checked);
         } else {
-            filteredIncome = currentData.income.filter(t => t.type === filterIncome);
+            filteredIncome = filteredIncome.filter(t => t.type === filterIncome);
         }
     }
 
@@ -1015,13 +1017,14 @@ function render() {
     if (filteredIncome.length === 0) {
         incomeList.innerHTML = '<div class="empty-state">אין הכנסות להצגה</div>';
     } else {
-        incomeList.innerHTML = filteredIncome.map((t, i) => {
+        incomeList.innerHTML = filteredIncome.map((t) => {
             let badgeClass = 'badge-regular';
             let badgeText = 'קבוע';
             if (t.type === 'onetime') {
                 badgeClass = 'badge-onetime';
                 badgeText = 'חד-פעמי';
             }
+            const originalIndex = currentData.income.findIndex(item => item.id === t.id);
             return `
                 <div class="transaction-wrapper">
                     <div class="transaction-item ${!t.checked ? 'inactive' : ''}">
@@ -1039,10 +1042,10 @@ function render() {
                         </div>
                         <div class="item-controls">
                             <div class="sort-buttons ${sortModeIncome ? 'visible' : ''}">
-                                <button class="sort-btn" onclick="moveItem(event, 'income', '${t.id}', 'up')" ${currentData.income.findIndex(item => item.id === t.id) === 0 ? 'disabled' : ''}>
+                                <button class="sort-btn" onclick="moveItem(event, 'income', '${t.id}', 'up')" ${originalIndex === 0 ? 'disabled' : ''}>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
                                 </button>
-                                <button class="sort-btn" onclick="moveItem(event, 'income', '${t.id}', 'down')" ${currentData.income.findIndex(item => item.id === t.id) === currentData.income.length - 1 ? 'disabled' : ''}>
+                                <button class="sort-btn" onclick="moveItem(event, 'income', '${t.id}', 'down')" ${originalIndex === currentData.income.length - 1 ? 'disabled' : ''}>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                 </button>
                             </div>
@@ -1058,15 +1061,14 @@ function render() {
         }).join('');
     }
 
-    // Render Expense List
-    let filteredExpenses = currentData.expenses;
+    let filteredExpenses = [...currentData.expenses];
     if (filterExpense !== 'all') {
         if (filterExpense === 'active') {
-            filteredExpenses = currentData.expenses.filter(t => t.checked);
+            filteredExpenses = filteredExpenses.filter(t => t.checked);
         } else if (filterExpense === 'inactive') {
-            filteredExpenses = currentData.expenses.filter(t => !t.checked);
+            filteredExpenses = filteredExpenses.filter(t => !t.checked);
         } else {
-            filteredExpenses = currentData.expenses.filter(t => t.type === filterExpense);
+            filteredExpenses = filteredExpenses.filter(t => t.type === filterExpense);
         }
     }
 
@@ -1074,7 +1076,8 @@ function render() {
     if (filteredExpenses.length === 0) {
         expenseList.innerHTML = '<div class="empty-state">אין הוצאות להצגה</div>';
     } else {
-        expenseList.innerHTML = filteredExpenses.map((t, i) => {
+        expenseList.innerHTML = filteredExpenses.map((t) => {
+            const originalIndex = currentData.expenses.findIndex(item => item.id === t.id);
             let badgeClass = 'badge-regular',
                 badgeText = 'קבוע';
             const isCompleted = t.completed;
@@ -1129,8 +1132,8 @@ function render() {
                     </div>
                     <div class="item-controls">
                         <div class="sort-buttons ${sortModeExpense ? 'visible' : ''}">
-                            <button class="sort-btn" onclick="moveItem(event, 'expense', '${t.id}', 'up')" ${currentData.expenses.findIndex(item => item.id === t.id) === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
-                            <button class="sort-btn" onclick="moveItem(event, 'expense', '${t.id}', 'down')" ${currentData.expenses.findIndex(item => item.id === t.id) === currentData.expenses.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+                            <button class="sort-btn" onclick="moveItem(event, 'expense', '${t.id}', 'up')" ${originalIndex === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
+                            <button class="sort-btn" onclick="moveItem(event, 'expense', '${t.id}', 'down')" ${originalIndex === currentData.expenses.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
                         </div>
                         <div class="transaction-actions">
                             <button class="action-btn edit" onclick="openModal('expense', '${t.id}')" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
@@ -1144,8 +1147,6 @@ function render() {
         }).join('');
     }
 
-
-    // Update Totals and Summaries
     const incomeTotal = filteredIncome.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const expenseTotal = filteredExpenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const currentBalanceValue = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
