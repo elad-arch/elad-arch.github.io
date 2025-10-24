@@ -11,7 +11,7 @@ const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
 let allData = {};
 let currentMonth;
 let currentType = 'income';
-let editingIndex = -1;
+let editingId = null; // שונה מ-editingIndex ל-editingId
 let chartInstance = null;
 let sortModeIncome = false;
 let sortModeExpense = false;
@@ -352,8 +352,8 @@ function loadData() {
 // ================================================
 // =========== פונקציות ליבה ו-UI ===========
 // ================================================
-function toggleLoanProgress(type, index) {
-    const transaction = allData[currentMonth].expenses[index];
+function toggleLoanProgress(type, id) {
+    const transaction = allData[currentMonth].expenses.find(t => t.id == id);
     if (transaction && transaction.type === 'loan') {
         transaction.isExpanded = !transaction.isExpanded;
         render();
@@ -489,7 +489,6 @@ function updateSummary() {
 }
 
 function updateLoansSummary() {
-    // *** THE FIX: Using correct optional chaining operator ***
     const loanTransactions = allData[currentMonth]?.expenses.filter(t => t.type === 'loan') || [];
     const loansContent = document.getElementById('loansSummaryContent');
     const noLoansMessage = document.getElementById('noLoansMessage');
@@ -527,7 +526,6 @@ function updateLoansSummary() {
 function updateBalanceIndicator() {
     const titleElement = document.querySelector('.header h1');
     const indicator = document.getElementById('balanceIndicator');
-    // *** THE FIX: Using correct optional chaining operator ***
     const totalIncome = allData[currentMonth]?.income.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0) || 0;
     const totalExpenses = allData[currentMonth]?.expenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0) || 0;
 
@@ -564,10 +562,14 @@ function loadFilters() {
     });
 }
 
-function moveItem(event, type, index, direction) {
+function moveItem(event, type, id, direction) {
     saveStateForUndo();
     event.stopPropagation();
     const arr = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
+    const index = arr.findIndex(t => t.id == id);
+
+    if (index === -1) return;
+
     if (direction === 'up' && index > 0) {
         [arr[index], arr[index - 1]] = [arr[index - 1], arr[index]];
     } else if (direction === 'down' && index < arr.length - 1) {
@@ -577,11 +579,11 @@ function moveItem(event, type, index, direction) {
     render();
 }
 
-function nextLoanPayment(event, type, index) {
+function nextLoanPayment(event, type, id) {
     saveStateForUndo();
     event.stopPropagation();
-    const transaction = allData[currentMonth].expenses[index];
-    if (transaction.type === 'loan' && transaction.loanCurrent < transaction.loanTotal) {
+    const transaction = allData[currentMonth].expenses.find(t => t.id == id);
+    if (transaction && transaction.type === 'loan' && transaction.loanCurrent < transaction.loanTotal) {
         transaction.loanCurrent++;
         transaction.isExpanded = true;
         if (transaction.loanCurrent >= transaction.loanTotal) {
@@ -742,9 +744,9 @@ function deleteAllData() {
     });
 }
 
-function openModal(type, index = -1) {
+function openModal(type, id = null) {
     currentType = type;
-    editingIndex = index;
+    editingId = id; // שימוש ב-ID במקום אינדקס
     const modal = document.getElementById('transactionModal');
     const title = document.getElementById('modalTitle');
     const [descriptionInput, amountInput, loanOriginalAmountInput, loanTotalInput, loanCurrentInput] = ['descriptionInput', 'amountInput', 'loanOriginalAmountInput', 'loanTotalInput', 'loanCurrentInput'].map(id => document.getElementById(id));
@@ -752,8 +754,11 @@ function openModal(type, index = -1) {
     document.getElementById('typeLoan').classList.toggle('disabled', type === 'income');
     document.getElementById('typeVariable').classList.toggle('disabled', type === 'income');
 
-    if (index >= 0) {
-        const transaction = type === 'income' ? allData[currentMonth].income[index] : allData[currentMonth].expenses[index];
+    if (id) {
+        const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
+        const transaction = list.find(t => t.id == id);
+        if (!transaction) return;
+
         title.textContent = 'עריכת תנועה';
         descriptionInput.value = transaction.description;
         amountInput.value = transaction.amount;
@@ -775,6 +780,7 @@ function openModal(type, index = -1) {
 
 function closeModal() {
     document.getElementById('transactionModal').classList.remove('active');
+    editingId = null; // איפוס ה-ID בעת סגירת המודאל
 }
 
 function saveTransaction() {
@@ -786,11 +792,11 @@ function saveTransaction() {
         openConfirmModal('שגיאה', 'נא למלא תיאור וסכום חיובי.', closeConfirmModal);
         return;
     }
-    const transaction = {
-        id: Date.now(),
+    
+    // יצירת אובייקט תנועה בסיסי
+    const transactionData = {
         description,
         amount,
-        checked: true,
         type: selectedTransactionType
     };
 
@@ -802,37 +808,54 @@ function saveTransaction() {
             openConfirmModal('שגיאה', 'נא למלא את כל פרטי ההלוואה באופן תקין.', closeConfirmModal);
             return;
         }
-        transaction.originalLoanAmount = originalLoanAmount;
-        transaction.loanTotal = loanTotal;
-        transaction.loanCurrent = loanCurrent;
-        transaction.completed = transaction.loanCurrent >= transaction.loanTotal;
-        transaction.checked = !transaction.completed;
+        transactionData.originalLoanAmount = originalLoanAmount;
+        transactionData.loanTotal = loanTotal;
+        transactionData.loanCurrent = loanCurrent;
+        transactionData.completed = transactionData.loanCurrent >= transactionData.loanTotal;
+        transactionData.checked = !transactionData.completed;
     }
 
     const list = currentType === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
-    if (editingIndex >= 0) {
-        const existingTransaction = list[editingIndex];
-        list[editingIndex] = { ...existingTransaction,
-            ...transaction
-        };
+    
+    if (editingId) {
+        // מצב עריכה
+        const indexToUpdate = list.findIndex(t => t.id == editingId);
+        if (indexToUpdate > -1) {
+            const existingTransaction = list[indexToUpdate];
+            list[indexToUpdate] = { ...existingTransaction, ...transactionData };
+        }
     } else {
-        list.push(transaction);
+        // מצב הוספה
+        const newTransaction = {
+            ...transactionData,
+            id: Date.now() + Math.random(), // ID ייחודי וחזק יותר
+            checked: true
+        };
+        // וודא שנתוני הלוואה מקבלים checked מתאים
+        if (newTransaction.type === 'loan') {
+             newTransaction.checked = !newTransaction.completed;
+        }
+        list.push(newTransaction);
     }
+
     saveDataToLocal();
     render();
     closeModal();
 }
 
-function deleteTransaction(event, type, index) {
+
+function deleteTransaction(event, type, id) {
     event.stopPropagation();
-    const transaction = type === 'income' ? allData[currentMonth].income[index] : allData[currentMonth].expenses[index];
+    const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
+    const transaction = list.find(t => t.id == id);
+    if (!transaction) return;
+
     const message = `האם למחוק את <b>"${transaction.description}"</b> בסך <b>₪${transaction.amount.toLocaleString('he-IL')}</b>?`;
     openConfirmModal('אישור מחיקת תנועה', message, () => {
         saveStateForUndo();
-        if (type === 'income') {
-            allData[currentMonth].income.splice(index, 1);
-        } else {
-            allData[currentMonth].expenses.splice(index, 1);
+        const indexToDelete = list.findIndex(t => t.id == id);
+        if (indexToDelete > -1) {
+            list.splice(indexToDelete, 1);
         }
         saveDataToLocal();
         render();
@@ -840,46 +863,59 @@ function deleteTransaction(event, type, index) {
     });
 }
 
-function toggleCheck(event, type, index) {
+function toggleCheck(event, type, id) {
     saveStateForUndo();
     event.stopPropagation();
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
-    list[index].checked = !list[index].checked;
-    saveDataToLocal();
-    render();
+    const transaction = list.find(t => t.id == id);
+    if (transaction) {
+        transaction.checked = !transaction.checked;
+        saveDataToLocal();
+        render();
+    }
 }
 
 let currentEditingElement = null;
 
-function editAmount(event, type, index) {
+function editAmount(event, type, id) {
     event.stopPropagation();
     const amountWrapper = event.currentTarget;
     if (amountWrapper.classList.contains('editing')) return;
     if (currentEditingElement) currentEditingElement.querySelector('.inline-edit-input').blur();
 
     const amountInput = amountWrapper.querySelector('.inline-edit-input');
-    const transaction = type === 'income' ? allData[currentMonth].income[index] : allData[currentMonth].expenses[index];
+    const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
+    const transaction = list.find(t => t.id == id);
+    if (!transaction) return;
+
     currentEditingElement = amountWrapper;
+    // שמירת ה-ID על האלמנט לצורך שימוש בפונקציית השמירה
+    amountWrapper.dataset.id = id; 
     amountWrapper.classList.add('editing');
     amountInput.value = transaction.amount;
     amountInput.focus();
     amountInput.select();
 }
 
-function saveAmount(event, type, index) {
+function saveAmount(event, type) {
     const input = event.target;
+    const amountWrapper = input.closest('.transaction-amount');
+    const id = amountWrapper.dataset.id;
     const newAmount = parseFloat(input.value);
+    
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
-    const originalAmount = list[index].amount;
+    const transaction = list.find(t => t.id == id);
 
     if (currentEditingElement) {
         currentEditingElement.classList.remove('editing');
         currentEditingElement = null;
     }
-    if (!isNaN(newAmount) && newAmount >= 0 && newAmount !== originalAmount) {
+    
+    if (transaction && !isNaN(newAmount) && newAmount >= 0 && newAmount !== transaction.amount) {
         saveStateForUndo();
-        list[index].amount = newAmount;
+        transaction.amount = newAmount;
     }
+    
     saveDataToLocal();
     render();
 }
@@ -893,37 +929,46 @@ function handleEditKeys(event) {
     }
 }
 
-function openApplyOptionsModal(type, index) {
-    const transaction = type === 'income' ? allData[currentMonth].income[index] : allData[currentMonth].expenses[index];
+function openApplyOptionsModal(type, id) {
+    const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
+    const transaction = list.find(t => t.id == id);
+    if (!transaction) return;
+
     const modal = document.getElementById('applyOptionsModal');
     document.getElementById('applyOptionsTransactionInfo').innerHTML = `<span>${transaction.description}</span><span class="${type === 'income' ? 'positive' : 'negative'}">₪${transaction.amount.toLocaleString('he-IL')}</span>`;
 
     modal.querySelectorAll('.apply-option').forEach(option => {
         const newOption = option.cloneNode(true);
         option.parentNode.replaceChild(newOption, option);
-        newOption.addEventListener('click', () => handleApplyAction(type, index, newOption.dataset.action));
+        newOption.addEventListener('click', () => handleApplyAction(type, id, newOption.dataset.action));
     });
     modal.classList.add('active');
 }
 
-function handleApplyAction(type, index, action) {
+function handleApplyAction(type, id, action) {
     saveStateForUndo();
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
-    const transaction = list[index];
+    const transaction = list.find(t => t.id == id);
+    if (!transaction) return;
+
     const amount = transaction.amount;
     let currentBalanceValue = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
 
-    if (type === 'income') {
-        currentBalanceValue += amount;
-    } else {
-        currentBalanceValue -= amount;
+    if (action !== 'apply-only') { // אם הפעולה היא לא רק החלה
+        if (type === 'income') {
+            currentBalanceValue += amount;
+        } else {
+            currentBalanceValue -= amount;
+        }
+        document.getElementById('currentBalanceInput').value = currentBalanceValue;
     }
-    document.getElementById('currentBalanceInput').value = currentBalanceValue;
+
 
     if (action === 'apply-delete') {
-        list.splice(index, 1);
+        const indexToDelete = list.findIndex(t => t.id == id);
+        if (indexToDelete > -1) list.splice(indexToDelete, 1);
     } else if (action === 'apply-zero') {
-        list[index].amount = 0;
+        transaction.amount = 0;
     }
 
     saveDataToLocal();
@@ -971,7 +1016,6 @@ function render() {
         incomeList.innerHTML = '<div class="empty-state">אין הכנסות להצגה</div>';
     } else {
         incomeList.innerHTML = filteredIncome.map((t, i) => {
-            const originalIndex = currentData.income.findIndex(item => item.id === t.id);
             let badgeClass = 'badge-regular';
             let badgeText = 'קבוע';
             if (t.type === 'onetime') {
@@ -982,30 +1026,30 @@ function render() {
                 <div class="transaction-wrapper">
                     <div class="transaction-item ${!t.checked ? 'inactive' : ''}">
                         <div class="transaction-info">
-                            <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'income', ${originalIndex})">
+                            <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'income', '${t.id}')">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                             </div>
                             <div class="transaction-details">
                                 <div class="transaction-text">${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
                             </div>
                         </div>
-                        <div class="transaction-amount" onclick="editAmount(event, 'income', ${originalIndex})">
+                        <div class="transaction-amount" onclick="editAmount(event, 'income', '${t.id}')">
                             <span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>
-                            <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'income', ${originalIndex})">
+                            <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'income')">
                         </div>
                         <div class="item-controls">
                             <div class="sort-buttons ${sortModeIncome ? 'visible' : ''}">
-                                <button class="sort-btn" onclick="moveItem(event, 'income', ${originalIndex}, 'up')" ${originalIndex === 0 ? 'disabled' : ''}>
+                                <button class="sort-btn" onclick="moveItem(event, 'income', '${t.id}', 'up')" ${currentData.income.findIndex(item => item.id === t.id) === 0 ? 'disabled' : ''}>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
                                 </button>
-                                <button class="sort-btn" onclick="moveItem(event, 'income', ${originalIndex}, 'down')" ${originalIndex === currentData.income.length - 1 ? 'disabled' : ''}>
+                                <button class="sort-btn" onclick="moveItem(event, 'income', '${t.id}', 'down')" ${currentData.income.findIndex(item => item.id === t.id) === currentData.income.length - 1 ? 'disabled' : ''}>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                 </button>
                             </div>
                             <div class="transaction-actions">
-                                <button class="action-btn edit" onclick="openModal('income', ${originalIndex})" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
-                                <button class="action-btn apply" onclick="openApplyOptionsModal('income', ${originalIndex})" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
-                                <button class="action-btn delete" onclick="deleteTransaction(event, 'income', ${originalIndex})" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                                <button class="action-btn edit" onclick="openModal('income', '${t.id}')" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+                                <button class="action-btn apply" onclick="openApplyOptionsModal('income', '${t.id}')" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
+                                <button class="action-btn delete" onclick="deleteTransaction(event, 'income', '${t.id}')" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
                             </div>
                         </div>
                     </div>
@@ -1031,7 +1075,6 @@ function render() {
         expenseList.innerHTML = '<div class="empty-state">אין הוצאות להצגה</div>';
     } else {
         expenseList.innerHTML = filteredExpenses.map((t, i) => {
-            const originalIndex = currentData.expenses.findIndex(item => item.id === t.id);
             let badgeClass = 'badge-regular',
                 badgeText = 'קבוע';
             const isCompleted = t.completed;
@@ -1062,7 +1105,7 @@ function render() {
                             </div>
                             <div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div>
                         </div>
-                        <button class="loan-next-payment-btn" onclick="nextLoanPayment(event, 'expense', ${originalIndex})" ${isComplete ? 'disabled' : ''}>
+                        <button class="loan-next-payment-btn" onclick="nextLoanPayment(event, 'expense', '${t.id}')" ${isComplete ? 'disabled' : ''}>
                             ${isComplete ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'}
                         </button>
                     </div>
@@ -1070,9 +1113,9 @@ function render() {
             }
 
             const itemHTML = `
-                <div class="transaction-item ${t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${isCompleted ? 'completed' : ''}" ${t.type === 'loan' ? `onclick="toggleLoanProgress('expense', ${originalIndex})"` : ''}>
+                <div class="transaction-item ${t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${isCompleted ? 'completed' : ''}" ${t.type === 'loan' ? `onclick="toggleLoanProgress('expense', '${t.id}')"` : ''}>
                     <div class="transaction-info">
-                        <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'expense', ${originalIndex})">
+                        <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'expense', '${t.id}')">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                         </div>
                         <div class="transaction-details">
@@ -1080,19 +1123,19 @@ function render() {
                             ${loanDetails}
                         </div>
                     </div>
-                    <div class="transaction-amount" onclick="editAmount(event, 'expense', ${originalIndex})">
+                    <div class="transaction-amount" onclick="editAmount(event, 'expense', '${t.id}')">
                         <span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>
-                        <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'expense', ${originalIndex})">
+                        <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'expense')">
                     </div>
                     <div class="item-controls">
                         <div class="sort-buttons ${sortModeExpense ? 'visible' : ''}">
-                            <button class="sort-btn" onclick="moveItem(event, 'expense', ${originalIndex}, 'up')" ${originalIndex === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
-                            <button class="sort-btn" onclick="moveItem(event, 'expense', ${originalIndex}, 'down')" ${originalIndex === currentData.expenses.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+                            <button class="sort-btn" onclick="moveItem(event, 'expense', '${t.id}', 'up')" ${currentData.expenses.findIndex(item => item.id === t.id) === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
+                            <button class="sort-btn" onclick="moveItem(event, 'expense', '${t.id}', 'down')" ${currentData.expenses.findIndex(item => item.id === t.id) === currentData.expenses.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
                         </div>
                         <div class="transaction-actions">
-                            <button class="action-btn edit" onclick="openModal('expense', ${originalIndex})" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
-                            <button class="action-btn apply" onclick="openApplyOptionsModal('expense', ${originalIndex})" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
-                            <button class="action-btn delete" onclick="deleteTransaction(event, 'expense', ${originalIndex})" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                            <button class="action-btn edit" onclick="openModal('expense', '${t.id}')" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+                            <button class="action-btn apply" onclick="openApplyOptionsModal('expense', '${t.id}')" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
+                            <button class="action-btn delete" onclick="deleteTransaction(event, 'expense', '${t.id}')" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
                         </div>
                     </div>
                 </div>
