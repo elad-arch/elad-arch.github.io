@@ -162,7 +162,6 @@ async function handleSaveToCloud() {
     }, 2000);
 }
 
-
 // ================================================
 // =========== פונקציות ניהול חודשים ===========
 // ================================================
@@ -181,6 +180,61 @@ function updateMonthDisplay() {
     document.getElementById('currentMonthDisplay').textContent = `${monthName} ${year}`;
 }
 
+// --- פונקציה ליצירת חודש חדש (עם/בלי העתקה) ---
+function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
+    currentMonth = newMonthKey;
+    let previousMonthFinalBalance = 0;
+    
+    // חישוב יתרת הסגירה של החודש הקודם
+    if (allData[prevMonthKey]) {
+        const prevData = allData[prevMonthKey];
+        const prevBalance = prevData.balance || 0;
+        const prevIncome = prevData.income.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
+        const prevExpenses = prevData.expenses.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
+        previousMonthFinalBalance = Math.round(prevBalance + prevIncome - prevExpenses);
+    }
+
+    // יצירת החודש החדש עם יתרת הפתיחה הנכונה
+    allData[currentMonth] = {
+        income: [],
+        expenses: [],
+        balance: previousMonthFinalBalance
+    };
+
+    // אם המשתמש בחר להעתיק, בצע העתקה
+    if (shouldCopy && allData[prevMonthKey]) {
+        allData[currentMonth].income = allData[prevMonthKey].income
+            .filter(t => t.type === 'regular')
+            .map(t => ({ ...t,
+                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                checked: true
+            }));
+
+        allData[currentMonth].expenses = allData[prevMonthKey].expenses
+            .filter(t => t.type === 'regular' || t.type === 'loan')
+            .map(t => ({ ...t,
+                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                checked: true
+            }));
+    }
+
+    closeNewMonthModal();
+    saveDataToLocal();
+    render();
+}
+
+function openNewMonthModal(newMonthKey, prevMonthKey) {
+    const modal = document.getElementById('newMonthModal');
+    // שומרים את המפתחות על המודאל כדי שהכפתורים יוכלו לגשת אליהם
+    modal.dataset.newMonthKey = newMonthKey;
+    modal.dataset.prevMonthKey = prevMonthKey;
+    modal.classList.add('active');
+}
+
+function closeNewMonthModal() {
+    document.getElementById('newMonthModal').classList.remove('active');
+}
+
 function navigateMonths(direction) {
     saveStateForUndo();
     const prevMonthKey = currentMonth;
@@ -193,53 +247,12 @@ function navigateMonths(direction) {
     const newMonth = (currentDate.getMonth() + 1).toString().padStart(2, '0');
     const newMonthKey = `${newYear}-${newMonth}`;
 
+    // אם מנסים לעבור לחודש עתידי שלא קיים
     if (direction > 0 && !allData[newMonthKey]) {
-        const onConfirm = () => {
-            currentMonth = newMonthKey;
-            let previousMonthFinalBalance = 0;
-            if (allData[prevMonthKey]) {
-                const prevData = allData[prevMonthKey];
-                const prevBalance = prevData.balance || 0;
-                const prevIncome = prevData.income.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
-                const prevExpenses = prevData.expenses.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
-                previousMonthFinalBalance = Math.round(prevBalance + prevIncome - prevExpenses);
-            }
-
-            allData[currentMonth] = {
-                income: [],
-                expenses: [],
-                balance: previousMonthFinalBalance
-            };
-
-            if (allData[prevMonthKey]) {
-                allData[currentMonth].income = allData[prevMonthKey].income
-                    .filter(t => t.type === 'regular')
-                    .map(t => ({ ...t,
-                        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                        checked: true
-                    }));
-
-                allData[currentMonth].expenses = allData[prevMonthKey].expenses
-                    .filter(t => t.type === 'regular' || t.type === 'loan')
-                    .map(t => ({ ...t,
-                        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                        checked: true
-                    }));
-            }
-
-            closeConfirmModal();
-            saveDataToLocal();
-            render();
-        };
-
-        openConfirmModal(
-            'יצירת חודש חדש',
-            'אתה עומד לפתוח חודש חדש. האם להעתיק את התנועות הקבועות מהחודש הנוכחי?',
-            onConfirm,
-            closeConfirmModal
-        );
-
-    } else if (allData[newMonthKey]) {
+        openNewMonthModal(newMonthKey, prevMonthKey);
+    } 
+    // אם עוברים לחודש קיים (קדימה או אחורה)
+    else if (allData[newMonthKey]) {
         currentMonth = newMonthKey;
         saveDataToLocal();
         loadData();
@@ -962,7 +975,7 @@ function handleApplyAction(type, id, action) {
         currentBalanceValue -= amount;
     }
     document.getElementById('currentBalanceInput').value = currentBalanceValue;
-    
+
     if (action === 'apply-delete') {
         const indexToDelete = list.findIndex(t => t.id == id);
         if (indexToDelete > -1) list.splice(indexToDelete, 1);
@@ -1202,6 +1215,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('loadFromCloudBtn').addEventListener('click', handleLoadFromCloud);
     document.getElementById('saveToCloudBtn').addEventListener('click', handleSaveToCloud);
+    
+    // חיבור הפונקציות לכפתורים של חלון יצירת חודש חדש
+    const newMonthModal = document.getElementById('newMonthModal');
+    document.getElementById('copyMonthBtn').addEventListener('click', () => {
+        handleCreateNewMonth(newMonthModal.dataset.newMonthKey, newMonthModal.dataset.prevMonthKey, true);
+    });
+    document.getElementById('cleanMonthBtn').addEventListener('click', () => {
+        handleCreateNewMonth(newMonthModal.dataset.newMonthKey, newMonthModal.dataset.prevMonthKey, false);
+    });
+    document.getElementById('cancelNewMonthBtn').addEventListener('click', closeNewMonthModal);
+
 
     document.querySelectorAll('#filterDropdownIncome .filter-option, #filterDropdownExpense .filter-option').forEach(option => {
         option.addEventListener('click', (e) => {
@@ -1218,6 +1242,7 @@ document.addEventListener('DOMContentLoaded', () => {
             closeChartModal();
             closeConfirmModal();
             closeApplyOptionsModal();
+            closeNewMonthModal();
         }
     });
 
@@ -1227,12 +1252,11 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('filterDropdownExpense').classList.remove('active');
             document.getElementById('monthJumperList').classList.remove('active');
         }
-    });
-
-    ['transactionModal', 'chartModal', 'confirmModal', 'applyOptionsModal'].forEach(id => {
-        document.getElementById(id).addEventListener('click', (e) => {
-            if (e.target.id === id) e.target.classList.remove('active');
-        });
+        
+        // סגירת חלונות קופצים בלחיצה על הרקע
+        if (e.target.classList.contains('modal')) {
+             e.target.classList.remove('active');
+        }
     });
 
     document.body.classList.remove('preload');

@@ -1848,3 +1848,18 @@ input[type="file"] {
     */
     padding-right: 8px;
 }
+
+.modal-btn-secondary {
+    background-color: var(--item-bg);
+    color: var(--text-primary);
+    border: 2px solid var(--border-color);
+}
+
+.modal-btn-secondary:hover {
+    border-color: #667eea;
+    background: #eef2ff;
+}
+
+[data-theme="dark"] .modal-btn-secondary:hover {
+    background: #312e81;
+}
