@@ -20,6 +20,20 @@ let filterExpense = 'all';
 let previousState = null;
 let selectedTransactionType = 'regular';
 
+// ================================================
+// =========== פונקציית אבטחה (Sanitization) ===========
+// ================================================
+/**
+ * מנקה מחרוזת טקסט כדי למנוע הזרקת HTML (XSS).
+ * מחליפה תווים מיוחדים של HTML בתווים המקבילים הבטוחים להצגה.
+ * @param {string} str - המחרוזת לניקוי.
+ * @returns {string} המחרוזת המנוקה והבטוחה.
+ */
+function sanitizeHTML(str) {
+    const temp = document.createElement('div');
+    temp.textContent = str;
+    return temp.innerHTML;
+}
 
 // ================================================
 // =========== פונקציות הצפנה ופענוח ===========
@@ -494,28 +508,15 @@ function updateSummary() {
     saveDataToLocal();
 }
 
-/*******************************************************
- * --- עדכון לפונקציית סיכום ההלוואות ---
- * הפונקציה הזו שונתה לחלוטין. במקום להסתכל רק על החודש הנוכחי,
- * היא מבצעת את הפעולות הבאות:
- * 1. אוספת את כל ההלוואות מכל החודשים הקיימים.
- * 2. מזהה כל הלוואה ייחודית לפי התיאור שלה.
- * 3. מוצאת את הרשומה העדכנית ביותר (מהחודש המאוחר ביותר) עבור כל הלוואה.
- * 4. מבצעת את כל חישובי הסיכום על בסיס הרשומות העדכניות ביותר בלבד.
- * התוצאה: סיכום ההלוואות תמיד מציג את המצב הגלובלי והאמיתי, לא משנה באיזה חודש צופים.
- *******************************************************/
 function updateLoansSummary() {
     const latestLoansMap = new Map();
-    const allMonthKeys = Object.keys(allData).sort(); // מיין חודשים מהישן לחדש
+    const allMonthKeys = Object.keys(allData).sort();
 
-    // שלב 1: סרוק את כל החודשים ואסוף את הסטטוס העדכני ביותר של כל הלוואה
     allMonthKeys.forEach(monthKey => {
         const monthData = allData[monthKey];
         if (monthData && monthData.expenses) {
             const loansInMonth = monthData.expenses.filter(t => t.type === 'loan');
             loansInMonth.forEach(loan => {
-                // הזיהוי הייחודי של הלוואה הוא לפי התיאור שלה
-                // כל עדכון מאוחר יותר פשוט ידרוס את הקודם במפה
                 latestLoansMap.set(loan.description, loan);
             });
         }
@@ -540,7 +541,7 @@ function updateLoansSummary() {
     if (noLoansMessage) noLoansMessage.style.display = 'none';
 
     const activeLoans = loanTransactions.filter(t => !t.completed && t.loanCurrent < t.loanTotal);
-    
+
     const activeLoansCount = activeLoans.length;
     const monthlyPayment = activeLoans.reduce((sum, t) => sum + t.amount, 0);
     const totalAmount = loanTransactions.reduce((sum, t) => sum + (t.originalLoanAmount || 0), 0);
@@ -885,7 +886,7 @@ function deleteTransaction(event, type, id) {
     const transaction = list.find(t => t.id == id);
     if (!transaction) return;
 
-    const message = `האם למחוק את <b>"${transaction.description}"</b> בסך <b>₪${transaction.amount.toLocaleString('he-IL')}</b>?`;
+    const message = `האם למחוק את <b>"${sanitizeHTML(transaction.description)}"</b> בסך <b>₪${transaction.amount.toLocaleString('he-IL')}</b>?`;
     openConfirmModal('אישור מחיקת תנועה', message, () => {
         saveStateForUndo();
         const indexToDelete = list.findIndex(t => t.id == id);
@@ -970,7 +971,7 @@ function openApplyOptionsModal(type, id) {
     if (!transaction) return;
 
     const modal = document.getElementById('applyOptionsModal');
-    document.getElementById('applyOptionsTransactionInfo').innerHTML = `<span>${transaction.description}</span><span class="${type === 'income' ? 'positive' : 'negative'}">₪${transaction.amount.toLocaleString('he-IL')}</span>`;
+    document.getElementById('applyOptionsTransactionInfo').innerHTML = `<span>${sanitizeHTML(transaction.description)}</span><span class="${type === 'income' ? 'positive' : 'negative'}">₪${transaction.amount.toLocaleString('he-IL')}</span>`;
 
     modal.querySelectorAll('.apply-option').forEach(option => {
         const newOption = option.cloneNode(true);
@@ -1062,7 +1063,7 @@ function render() {
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                             </div>
                             <div class="transaction-details">
-                                <div class="transaction-text">${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
+                                <div class="transaction-text">${sanitizeHTML(t.description)} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
                             </div>
                         </div>
                         <div class="transaction-amount" onclick="editAmount(event, 'income', '${t.id}')">
@@ -1151,7 +1152,7 @@ function render() {
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                         </div>
                         <div class="transaction-details">
-                            <div class="transaction-text">${t.description} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
+                            <div class="transaction-text">${sanitizeHTML(t.description)} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
                             ${loanDetails}
                         </div>
                     </div>
