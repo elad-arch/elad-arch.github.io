@@ -30,6 +30,7 @@ let selectedTransactionType = 'regular';
  * @returns {string} המחרוזת המנוקה והבטוחה.
  */
 function sanitizeHTML(str) {
+    if (!str) return "";
     const temp = document.createElement('div');
     temp.textContent = str;
     return temp.innerHTML;
@@ -186,12 +187,47 @@ function getCurrentMonthKey() {
 
 function updateMonthDisplay() {
     if (!currentMonth) return;
+    const monthDisplay = document.getElementById('currentMonthDisplay');
     const [year, month] = currentMonth.split('-');
     const date = new Date(year, month - 1);
     const monthName = date.toLocaleString('he-IL', {
         month: 'long'
     });
-    document.getElementById('currentMonthDisplay').textContent = `${monthName} ${year}`;
+    monthDisplay.textContent = `${monthName} ${year}`;
+
+    const todayMonthKey = getCurrentMonthKey();
+    if (currentMonth === todayMonthKey) {
+        monthDisplay.classList.add('disabled-jumper');
+        monthDisplay.classList.remove('is-jumper');
+        monthDisplay.onclick = null;
+        monthDisplay.title = "";
+    } else {
+        monthDisplay.classList.remove('disabled-jumper');
+        monthDisplay.classList.add('is-jumper');
+        monthDisplay.onclick = jumpToCurrentMonth;
+        monthDisplay.title = "קפוץ לחודש הנוכחי";
+    }
+
+    updateNavButtons();
+}
+
+function updateNavButtons() {
+    const prevMonthBtn = document.getElementById('prevMonthBtn');
+    const nextMonthBtn = document.getElementById('nextMonthBtn');
+
+    const existingMonths = Object.keys(allData).sort();
+    const currentIndex = existingMonths.indexOf(currentMonth);
+
+    prevMonthBtn.disabled = (currentIndex === 0);
+
+    const isLastMonth = (currentIndex === existingMonths.length - 1);
+    if (isLastMonth) {
+        nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+        nextMonthBtn.title = "צור חודש חדש";
+    } else {
+        nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+        nextMonthBtn.title = "החודש הבא";
+    }
 }
 
 function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
@@ -245,23 +281,26 @@ function closeNewMonthModal() {
 }
 
 function navigateMonths(direction) {
-    saveStateForUndo();
-    const prevMonthKey = currentMonth;
-
-    const [year, month] = currentMonth.split('-').map(Number);
-    const currentDate = new Date(year, month - 1, 1);
-    currentDate.setMonth(currentDate.getMonth() + direction);
-
-    const newYear = currentDate.getFullYear();
-    const newMonth = (currentDate.getMonth() + 1).toString().padStart(2, '0');
-    const newMonthKey = `${newYear}-${newMonth}`;
-
-    if (direction > 0 && !allData[newMonthKey]) {
-        openNewMonthModal(newMonthKey, prevMonthKey);
-    } else if (allData[newMonthKey]) {
-        currentMonth = newMonthKey;
-        saveDataToLocal();
-        loadData();
+    const existingMonths = Object.keys(allData).sort();
+    const currentIndex = existingMonths.indexOf(currentMonth);
+    
+    if (direction === 1) { // קדימה
+        if (currentIndex < existingMonths.length - 1) {
+            currentMonth = existingMonths[currentIndex + 1];
+            saveDataToLocal(); // <-- התיקון הקריטי
+            loadData();
+        } else {
+            const [year, month] = currentMonth.split('-').map(Number);
+            const nextDate = new Date(year, month, 1);
+            const newMonthKey = `${nextDate.getFullYear()}-${(nextDate.getMonth() + 1).toString().padStart(2, '0')}`;
+            openNewMonthModal(newMonthKey, currentMonth);
+        }
+    } else if (direction === -1) { // אחורה
+        if (currentIndex > 0) {
+            currentMonth = existingMonths[currentIndex - 1];
+            saveDataToLocal(); // <-- התיקון הקריטי
+            loadData();
+        }
     }
 }
 
@@ -309,6 +348,21 @@ function jumpToMonth(monthKey) {
     toggleMonthJumper();
     saveDataToLocal();
     loadData();
+}
+
+function jumpToCurrentMonth() {
+    const todayMonthKey = getCurrentMonthKey();
+    if (currentMonth === todayMonthKey) return;
+
+    if (allData[todayMonthKey]) {
+        currentMonth = todayMonthKey;
+        saveDataToLocal();
+        loadData();
+    } else {
+        const existingMonths = Object.keys(allData).sort();
+        const lastMonthKey = existingMonths[existingMonths.length - 1];
+        openNewMonthModal(todayMonthKey, lastMonthKey);
+    }
 }
 
 function populateMonthJumper() {

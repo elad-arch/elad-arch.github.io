@@ -1832,20 +1832,8 @@ input[type="file"] {
 /* --- Fix for Mobile Scrolling Bug --- */
 
 .transaction-list {
-    /* קובע גובה מקסימלי לרשימה. 
-       60vh = 60% מגובה המסך. זהו ערך דינמי שמתאים את עצמו לגודל המכשיר.
-       אפשר לשנות לערך אחר כמו 400px אם תרצה גובה קבוע.
-    */
     max-height: 60vh;
-
-    /* זו השורה החשובה ביותר:
-       היא מוסיפה פס גלילה אנכי (y) באופן אוטומטי (auto)
-       רק כאשר התוכן חורג מהגובה המקסימלי שקבענו.
-    */
     overflow-y: auto;
-
-    /* מוסיף ריווח קטן בצד ימין כדי שפס הגלילה לא ייצמד לתוכן.
-    */
     padding-right: 8px;
 }
 
@@ -1862,4 +1850,39 @@ input[type="file"] {
 
 [data-theme="dark"] .modal-btn-secondary:hover {
     background: #312e81;
+}
+
+.month-nav-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--item-bg);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+.month-nav-btn:disabled:hover {
+    transform: none;
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+#currentMonthDisplay {
+    cursor: pointer;
+    transition: color 0.2s ease-in-out, background-color 0.2s ease-in-out;
+    border-radius: 8px;
+    padding: 4px 12px;
+}
+
+#currentMonthDisplay.is-jumper {
+    color: #8b5cf6;
+}
+
+#currentMonthDisplay:hover:not(.disabled-jumper) {
+    background-color: var(--item-hover);
+}
+
+#currentMonthDisplay.disabled-jumper {
+    cursor: default;
+    background-color: transparent;
+    color: var(--header-text-color);
 }
