@@ -13,12 +13,15 @@ let currentMonth;
 let currentType = 'income';
 let editingId = null;
 let chartInstance = null;
-let sortModeIncome = false;
-let sortModeExpense = false;
 let filterIncome = 'all';
 let filterExpense = 'all';
 let previousState = null;
-let selectedTransactionType = 'regular';
+let selectedTransactionType = 'onetime';
+let sortSettings = {
+    income: { mode: 'manual', direction: 'asc' },
+    expense: { mode: 'manual', direction: 'asc' }
+};
+let manualSortActive = { income: false, expense: false };
 
 // ================================================
 // =========== פונקציית אבטחה (Sanitization) ===========
@@ -48,11 +51,11 @@ function decryptData(encryptedData, password) {
     try {
         const bytes = CryptoJS.AES.decrypt(encryptedData, password);
         const decryptedString = bytes.toString(CryptoJS.enc.Utf8);
-        if (!decryptedString) return null; // סיסמה שגויה
+        if (!decryptedString) return null;
         return JSON.parse(decryptedString);
     } catch (e) {
         console.error("Decryption failed:", e);
-        return null; // סביר להניח שהסיסמה שגויה או שהמידע פגום
+        return null;
     }
 }
 
@@ -68,16 +71,11 @@ async function loadFromCloud(password) {
             }
         });
         if (!response.ok) throw new Error('Failed to fetch data');
-
         const cloudData = await response.json();
-
         if (Object.keys(cloudData.record).length === 0 || !cloudData.record.data) {
-            console.log("Cloud bin is empty or in initial state.");
             return 'empty';
         }
-
         const decryptedData = decryptData(cloudData.record.data, password);
-
         if (decryptedData) {
             allData = decryptedData;
             currentMonth = Object.keys(allData).sort().pop() || getCurrentMonthKey();
@@ -98,7 +96,6 @@ async function saveToCloud(password) {
         data: encryptData(allData, password)
     };
     if (!dataToSave.data) return 'encryption_failed';
-
     try {
         const response = await fetch(BIN_URL, {
             method: 'PUT',
@@ -122,12 +119,9 @@ async function handleLoadFromCloud() {
         openConfirmModal('שגיאה', 'יש להזין סיסמת סנכרון.', closeConfirmModal);
         return;
     }
-
     const loadBtn = document.getElementById('loadFromCloudBtn');
     loadBtn.disabled = true;
-
     const result = await loadFromCloud(password);
-
     if (result === 'decryption_failed') {
         openConfirmModal('שגיאה', 'הסיסמה שגויה.', closeConfirmModal);
     } else if (result === 'error') {
@@ -137,7 +131,6 @@ async function handleLoadFromCloud() {
     } else if (result === 'empty') {
         openConfirmModal('מידע', 'מאגר הנתונים בענן ריק.', closeConfirmModal);
     }
-
     loadBtn.disabled = false;
 }
 
@@ -147,13 +140,10 @@ async function handleSaveToCloud() {
         openConfirmModal('שגיאה', 'יש להזין סיסמת סנכרון.', closeConfirmModal);
         return;
     }
-
     const saveBtn = document.getElementById('saveToCloudBtn');
     saveBtn.disabled = true;
     saveBtn.classList.add('loading');
-
     const result = await saveToCloud(password);
-
     if (result === 'encryption_failed') {
         openConfirmModal('שגיאה', 'ההצפנה נכשלה. לא ניתן היה לשמור.', closeConfirmModal);
         saveBtn.classList.add('error');
@@ -164,7 +154,6 @@ async function handleSaveToCloud() {
         saveBtn.classList.add('success');
         openConfirmModal('הצלחה', 'הנתונים נשמרו בענן!', closeConfirmModal);
     }
-
     setTimeout(() => {
         saveBtn.disabled = false;
         saveBtn.classList.remove('loading', 'success', 'error');
@@ -184,11 +173,8 @@ function updateMonthDisplay() {
     const monthDisplay = document.getElementById('currentMonthDisplay');
     const [year, month] = currentMonth.split('-');
     const date = new Date(year, month - 1);
-    const monthName = date.toLocaleString('he-IL', {
-        month: 'long'
-    });
+    const monthName = date.toLocaleString('he-IL', { month: 'long' });
     monthDisplay.textContent = `${monthName} ${year}`;
-
     const todayMonthKey = getCurrentMonthKey();
     if (currentMonth === todayMonthKey) {
         monthDisplay.classList.add('disabled-jumper');
@@ -201,19 +187,15 @@ function updateMonthDisplay() {
         monthDisplay.onclick = jumpToCurrentMonth;
         monthDisplay.title = "קפוץ לחודש הנוכחי";
     }
-
     updateNavButtons();
 }
 
 function updateNavButtons() {
     const prevMonthBtn = document.getElementById('prevMonthBtn');
     const nextMonthBtn = document.getElementById('nextMonthBtn');
-
     const existingMonths = Object.keys(allData).sort();
     const currentIndex = existingMonths.indexOf(currentMonth);
-
     prevMonthBtn.disabled = (currentIndex === 0);
-
     const isLastMonth = (currentIndex === existingMonths.length - 1);
     if (isLastMonth) {
         nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
@@ -227,37 +209,45 @@ function updateNavButtons() {
 function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
     currentMonth = newMonthKey;
     let previousMonthFinalBalance = 0;
-
     if (allData[prevMonthKey]) {
         const prevData = allData[prevMonthKey];
         const prevBalance = prevData.balance || 0;
-        const prevIncome = prevData.income.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
-        const prevExpenses = prevData.expenses.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
+        const prevIncome = (prevData.income || []).filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
+        const prevExpenses = (prevData.expenses || []).filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
         previousMonthFinalBalance = Math.round(prevBalance + prevIncome - prevExpenses);
     }
-
-    allData[currentMonth] = {
-        income: [],
-        expenses: [],
-        balance: previousMonthFinalBalance
-    };
-
-    if (shouldCopy && allData[prevMonthKey]) {
-        allData[currentMonth].income = allData[prevMonthKey].income
-            .filter(t => t.type === 'regular')
-            .map(t => ({ ...t,
-                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                checked: true
-            }));
-
-        allData[currentMonth].expenses = allData[prevMonthKey].expenses
-            .filter(t => t.type === 'regular' || (t.type === 'loan' && !t.completed))
-            .map(t => ({ ...t,
-                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                checked: true
-            }));
+    allData[currentMonth] = { income: [], expenses: [], balance: previousMonthFinalBalance };
+    if (shouldCopy) {
+        const recurringIncomes = new Map();
+        const recurringExpenses = new Map();
+        const allMonthKeys = Object.keys(allData).sort();
+        allMonthKeys.forEach(monthKey => {
+            if (monthKey === currentMonth) return;
+            const monthData = allData[monthKey];
+            (monthData.income || []).forEach(t => {
+                if (t.recurrence && t.recurrence.isRecurring) {
+                    recurringIncomes.set(t.description, t);
+                }
+            });
+            (monthData.expenses || []).forEach(t => {
+                if (t.recurrence && t.recurrence.isRecurring) {
+                    recurringExpenses.set(t.description, t);
+                }
+            });
+        });
+        recurringIncomes.forEach(t => {
+            allData[currentMonth].income.push({ ...t, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true });
+        });
+        recurringExpenses.forEach(t => {
+            allData[currentMonth].expenses.push({ ...t, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true });
+        });
+        if (allData[prevMonthKey] && allData[prevMonthKey].expenses) {
+            const loansToCopy = allData[prevMonthKey].expenses.filter(t => t.type === 'loan' && !t.completed);
+            loansToCopy.forEach(loan => {
+                allData[currentMonth].expenses.push({ ...loan, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true });
+            });
+        }
     }
-
     closeNewMonthModal();
     saveDataToLocal();
     render();
@@ -277,8 +267,7 @@ function closeNewMonthModal() {
 function navigateMonths(direction) {
     const existingMonths = Object.keys(allData).sort();
     const currentIndex = existingMonths.indexOf(currentMonth);
-
-    if (direction === 1) { // קדימה
+    if (direction === 1) {
         if (currentIndex < existingMonths.length - 1) {
             currentMonth = existingMonths[currentIndex + 1];
             saveDataToLocal();
@@ -289,7 +278,7 @@ function navigateMonths(direction) {
             const newMonthKey = `${nextDate.getFullYear()}-${(nextDate.getMonth() + 1).toString().padStart(2, '0')}`;
             openNewMonthModal(newMonthKey, currentMonth);
         }
-    } else if (direction === -1) { // אחורה
+    } else if (direction === -1) {
         if (currentIndex > 0) {
             currentMonth = existingMonths[currentIndex - 1];
             saveDataToLocal();
@@ -298,19 +287,16 @@ function navigateMonths(direction) {
     }
 }
 
-// --- לוגיקה חדשה לאיפוס ומחיקת חודש ---
 function openEditMonthModal() {
     const existingMonths = Object.keys(allData).sort();
     const currentIndex = existingMonths.indexOf(currentMonth);
     const isLastMonth = currentIndex === existingMonths.length - 1;
-
     const deleteBtn = document.getElementById('deleteMonthPermanentlyBtn');
     if (isLastMonth) {
         deleteBtn.classList.remove('hidden');
     } else {
         deleteBtn.classList.add('hidden');
     }
-
     document.getElementById('editMonthModal').classList.add('active');
 }
 
@@ -323,9 +309,7 @@ function resetCurrentMonth() {
     const monthData = allData[currentMonth];
     monthData.income = [];
     monthData.expenses = [];
-    
     recalculateBalancesFrom(currentMonth);
-
     closeEditMonthModal();
     saveDataToLocal();
     render();
@@ -334,18 +318,14 @@ function resetCurrentMonth() {
 function recalculateBalancesFrom(startMonthKey) {
     const allMonthKeys = Object.keys(allData).sort();
     const startIndex = allMonthKeys.indexOf(startMonthKey);
-
     if (startIndex === -1) return;
-
     for (let i = startIndex + 1; i < allMonthKeys.length; i++) {
         const monthToUpdateKey = allMonthKeys[i];
         const prevMonthKey = allMonthKeys[i - 1];
-        
         const prevData = allData[prevMonthKey];
         const prevBalance = prevData.balance || 0;
-        const prevIncome = prevData.income.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
-        const prevExpenses = prevData.expenses.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
-        
+        const prevIncome = (prevData.income || []).filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
+        const prevExpenses = (prevData.expenses || []).filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
         allData[monthToUpdateKey].balance = Math.round(prevBalance + prevIncome - prevExpenses);
     }
 }
@@ -355,17 +335,12 @@ function deleteCurrentMonth() {
     const monthToDelete = currentMonth;
     const existingMonths = Object.keys(allData).sort();
     const currentIndex = existingMonths.indexOf(monthToDelete);
-
     let newCurrentMonth = (currentIndex > 0) ? existingMonths[currentIndex - 1] : (existingMonths.length > 1 ? existingMonths[0] : getCurrentMonthKey());
-    
     delete allData[monthToDelete];
-
     if (Object.keys(allData).length === 0) {
         allData[newCurrentMonth] = { income: [], expenses: [], balance: 0 };
     }
-
     currentMonth = newCurrentMonth;
-    
     closeEditMonthModal();
     saveDataToLocal();
     render();
@@ -389,7 +364,6 @@ function jumpToMonth(monthKey) {
 function jumpToCurrentMonth() {
     const todayMonthKey = getCurrentMonthKey();
     if (currentMonth === todayMonthKey) return;
-
     if (allData[todayMonthKey]) {
         currentMonth = todayMonthKey;
         saveDataToLocal();
@@ -401,22 +375,15 @@ function jumpToCurrentMonth() {
     }
 }
 
-
 function populateMonthJumper() {
     const jumperList = document.getElementById('monthJumperList');
     if (!jumperList) return;
     const months = Object.keys(allData).sort((a, b) => b.localeCompare(a));
-
     jumperList.innerHTML = '';
-
     months.forEach(monthKey => {
         const [year, month] = monthKey.split('-');
         const date = new Date(year, month - 1);
-        const monthName = date.toLocaleString('he-IL', {
-            month: 'long',
-            year: 'numeric'
-        });
-
+        const monthName = date.toLocaleString('he-IL', { month: 'long', year: 'numeric' });
         const option = document.createElement('div');
         option.classList.add('filter-option');
         if (monthKey === currentMonth) {
@@ -424,7 +391,6 @@ function populateMonthJumper() {
         }
         option.textContent = monthName;
         option.onclick = () => jumpToMonth(monthKey);
-
         jumperList.appendChild(option);
     });
 }
@@ -443,7 +409,7 @@ function saveDataToLocal() {
 function loadData() {
     const savedData = localStorage.getItem('budgetData');
     allData = savedData ? JSON.parse(savedData) : {};
-
+    
     currentMonth = localStorage.getItem('currentMonth') || getCurrentMonthKey();
 
     if (!allData[currentMonth]) {
@@ -453,9 +419,10 @@ function loadData() {
             balance: 0
         };
     }
-
+    
+    manualSortActive = { income: false, expense: false };
+    
     document.getElementById('currentBalanceInput').value = allData[currentMonth].balance || 0;
-
     loadFilters();
     render();
 }
@@ -479,35 +446,30 @@ const themeIcons = {
 
 function selectTransactionType(type) {
     if ((type === 'loan' || type === 'variable') && currentType === 'income') return;
-
     selectedTransactionType = type;
+    
     document.querySelectorAll('.type-option').forEach(el => el.classList.remove('selected'));
-    const amountLabel = document.getElementById('amountLabel');
-    const loanFields = document.getElementById('loanFields');
-    const descriptionInput = document.getElementById('descriptionInput');
+    document.getElementById(type === 'variable' ? 'typeVariable' : (type === 'loan' ? 'typeLoan' : 'typeOnetime')).classList.add('selected');
 
-    if (currentType === 'income') {
-        descriptionInput.placeholder = "למשל: משכורת, מתנה";
-    } else {
-        if (type === 'variable') {
-            descriptionInput.placeholder = "למשל: שם הכרטיס (אמקס, ויזה)";
-        } else if (type === 'loan') {
-            descriptionInput.placeholder = "למשל: החזר משכנתא, הלוואת רכב";
-        } else {
-            descriptionInput.placeholder = "למשל: קניות, חשבון חשמל";
-        }
-    }
+    const loanFields = document.getElementById('loanFields');
+    const recurrenceGroup = document.querySelector('.recurrence-group');
+    const descriptionInput = document.getElementById('descriptionInput');
+    const amountLabel = document.getElementById('amountLabel');
 
     if (type === 'loan') {
-        document.getElementById('typeLoan').classList.add('selected');
+        recurrenceGroup.classList.add('hidden');
         loanFields.classList.add('active');
         amountLabel.textContent = "סכום תשלום חודשי (₪)";
+        descriptionInput.placeholder = currentType === 'income' ? "" : "למשל: החזר משכנתא, הלוואת רכב";
     } else {
-        if (type === 'regular') document.getElementById('typeRegular').classList.add('selected');
-        if (type === 'variable') document.getElementById('typeVariable').classList.add('selected');
-        if (type === 'onetime') document.getElementById('typeOnetime').classList.add('selected');
+        recurrenceGroup.classList.remove('hidden');
         loanFields.classList.remove('active');
         amountLabel.textContent = "סכום (₪)";
+        if (currentType === 'income') {
+            descriptionInput.placeholder = "למשל: משכורת, מתנה";
+        } else {
+            descriptionInput.placeholder = (type === 'variable') ? "למשל: שם הכרטיס (אמקס, ויזה)" : "למשל: קניות, חשבון חשמל";
+        }
     }
 }
 
@@ -560,32 +522,20 @@ function updateSummary() {
     const input = document.getElementById('currentBalanceInput');
     input.classList.toggle('positive-balance', currentBalanceValue > 0);
     input.classList.toggle('negative-balance', currentBalanceValue < 0);
-
-    const currentData = allData[currentMonth] || {
-        income: [],
-        expenses: []
-    };
-    const incomeTotal = currentData.income.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
-    const expenseTotal = currentData.expenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
+    const currentData = allData[currentMonth] || { income: [], expenses: [] };
+    const incomeTotal = (currentData.income || []).reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
+    const expenseTotal = (currentData.expenses || []).reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const balanceAfterExpenses = currentBalanceValue - expenseTotal;
     const finalBalance = balanceAfterExpenses + incomeTotal;
-
     const afterExpensesEl = document.getElementById('balanceAfterExpenses');
-    afterExpensesEl.textContent = '₪' + balanceAfterExpenses.toLocaleString('he-IL', {
-        minimumFractionDigits: 2
-    });
+    afterExpensesEl.textContent = '₪' + balanceAfterExpenses.toLocaleString('he-IL', { minimumFractionDigits: 2 });
     afterExpensesEl.className = 'summary-block-value ' + (balanceAfterExpenses >= 0 ? 'positive' : 'negative');
-
     const finalBalanceEl = document.getElementById('finalBalance');
-    finalBalanceEl.textContent = '₪' + finalBalance.toLocaleString('he-IL', {
-        minimumFractionDigits: 2
-    });
+    finalBalanceEl.textContent = '₪' + finalBalance.toLocaleString('he-IL', { minimumFractionDigits: 2 });
     finalBalanceEl.className = 'summary-block-value ' + (finalBalance >= 0 ? 'positive' : 'negative');
-
     const summaryCard = document.querySelector('.summary-card');
     summaryCard.classList.remove('alert-danger', 'alert-warning', 'alert-success');
     const alertIconDiv = document.getElementById('alertIcon');
-
     if (finalBalance < 0) {
         summaryCard.classList.add('alert-danger');
         if (alertIconDiv) alertIconDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
@@ -602,7 +552,6 @@ function updateSummary() {
 function updateLoansSummary() {
     const latestLoansMap = new Map();
     const allMonthKeys = Object.keys(allData).sort();
-
     allMonthKeys.forEach(monthKey => {
         const monthData = allData[monthKey];
         if (monthData && monthData.expenses) {
@@ -612,11 +561,9 @@ function updateLoansSummary() {
             });
         }
     });
-
     const loanTransactions = Array.from(latestLoansMap.values());
     const loansContent = document.getElementById('loansSummaryContent');
     const noLoansMessage = document.getElementById('noLoansMessage');
-
     if (loanTransactions.length === 0) {
         if (loansContent) loansContent.style.display = 'none';
         if (noLoansMessage) noLoansMessage.style.display = 'block';
@@ -627,12 +574,9 @@ function updateLoansSummary() {
         document.getElementById('loansCollapsedSummary').innerHTML = `<span class="summary-label">אין הלוואות פעילות</span>`;
         return;
     }
-
     if (loansContent) loansContent.style.display = 'block';
     if (noLoansMessage) noLoansMessage.style.display = 'none';
-
     const activeLoans = loanTransactions.filter(t => !t.completed && t.loanCurrent < t.loanTotal);
-
     const activeLoansCount = activeLoans.length;
     const monthlyPayment = activeLoans.reduce((sum, t) => sum + t.amount, 0);
     const totalAmount = loanTransactions.reduce((sum, t) => sum + (t.originalLoanAmount || 0), 0);
@@ -641,7 +585,6 @@ function updateLoansSummary() {
         const remaining = (t.originalLoanAmount || 0) - paidAmount;
         return sum + (remaining > 0 ? remaining : 0);
     }, 0);
-
     document.getElementById('totalLoansCount').textContent = activeLoansCount;
     document.getElementById('monthlyLoanPayment').textContent = `₪${monthlyPayment.toLocaleString('he-IL', { minimumFractionDigits: 2 })}`;
     document.getElementById('totalLoanAmount').textContent = `₪${totalAmount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}`;
@@ -652,12 +595,10 @@ function updateLoansSummary() {
 function updateBalanceIndicator() {
     const titleElement = document.querySelector('.header h1');
     const indicator = document.getElementById('balanceIndicator');
-    const totalIncome = allData[currentMonth]?.income.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0) || 0;
-    const totalExpenses = allData[currentMonth]?.expenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0) || 0;
-
+    const totalIncome = (allData[currentMonth]?.income || []).reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
+    const totalExpenses = (allData[currentMonth]?.expenses || []).reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     titleElement.classList.toggle('title-positive-balance', totalIncome > totalExpenses);
     titleElement.classList.toggle('title-negative-balance', totalExpenses > totalIncome);
-
     const total = totalIncome + totalExpenses;
     let incomeRatio = 0.5;
     if (total > 0) {
@@ -666,15 +607,70 @@ function updateBalanceIndicator() {
     indicator.style.left = `${incomeRatio * 100}%`;
 }
 
-function toggleSortMode(type) {
-    if (type === 'income') {
-        sortModeIncome = !sortModeIncome;
-        document.getElementById('sortBtnIncome').classList.toggle('active');
-    } else {
-        sortModeExpense = !sortModeExpense;
-        document.getElementById('sortBtnExpense').classList.toggle('active');
+function toggleSortDropdown(type) {
+    const otherDropdownId = type === 'income' ? 'filterDropdownIncome' : 'filterDropdownExpense';
+    document.getElementById(otherDropdownId).classList.remove('active');
+    const dropdownId = type === 'income' ? 'sortDropdownIncome' : 'sortDropdownExpense';
+    const dropdown = document.getElementById(dropdownId);
+    if (dropdown.classList.contains('active')) {
+        dropdown.classList.remove('active');
+        return;
     }
+    populateSortDropdown(type);
+    dropdown.classList.add('active');
+}
+
+function populateSortDropdown(type) {
+    const dropdownId = type === 'income' ? 'sortDropdownIncome' : 'sortDropdownExpense';
+    const dropdown = document.getElementById(dropdownId);
+    const currentSettings = sortSettings[type];
+    const options = [
+        { mode: 'manual', text: 'סידור אישי' },
+        { mode: 'alpha', text: 'לפי א׳-ב׳' },
+        { mode: 'amount', text: 'לפי סכום' },
+        { mode: 'date', text: 'לפי תאריך' }
+    ];
+    dropdown.innerHTML = options.map(opt => {
+        const isSelected = currentSettings.mode === opt.mode;
+        let directionIndicator = '';
+        if (opt.mode === 'amount' && isSelected) {
+            const arrow = currentSettings.direction === 'asc' ?
+                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>' :
+                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>';
+            directionIndicator = `<span class="sort-direction">${arrow}</span>`;
+        }
+        return `<div class="filter-option ${isSelected ? 'selected' : ''}" onclick="setSortMode('${type}', '${opt.mode}')">
+                    <span>${opt.text}</span> ${directionIndicator}
+                </div>`;
+    }).join('');
+}
+
+// === התיקון: הוספת שמירת הגדרות המיון ===
+function setSortMode(type, mode) {
+    const settings = sortSettings[type];
+    if (mode === 'manual') {
+        manualSortActive[type] = !manualSortActive[type];
+        settings.mode = 'manual';
+    } else {
+        manualSortActive[type] = false;
+        if (settings.mode === 'amount' && mode === 'amount') {
+            settings.direction = settings.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            settings.mode = mode;
+            settings.direction = 'asc';
+        }
+    }
+    localStorage.setItem('sortSettings', JSON.stringify(sortSettings)); // שמירה בזיכרון
+    document.querySelectorAll('.filter-dropdown').forEach(d => d.classList.remove('active'));
     render();
+}
+
+// === התיקון: הוספת פונקציה לטעינת הגדרות המיון ===
+function loadSortSettings() {
+    const savedSortSettings = localStorage.getItem('sortSettings');
+    if (savedSortSettings) {
+        sortSettings = JSON.parse(savedSortSettings);
+    }
 }
 
 function loadFilters() {
@@ -693,9 +689,7 @@ function moveItem(event, type, id, direction) {
     event.stopPropagation();
     const arr = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     const index = arr.findIndex(t => t.id == id);
-
     if (index === -1) return;
-
     if (direction === 'up' && index > 0) {
         [arr[index], arr[index - 1]] = [arr[index - 1], arr[index]];
     } else if (direction === 'down' && index < arr.length - 1) {
@@ -721,27 +715,19 @@ function nextLoanPayment(event, type, id) {
 }
 
 function toggleFilter(type) {
+    const otherDropdownId = type === 'income' ? 'sortDropdownIncome' : 'sortDropdownExpense';
+    document.getElementById(otherDropdownId).classList.remove('active');
     document.getElementById(type === 'income' ? 'filterDropdownIncome' : 'filterDropdownExpense').classList.toggle('active');
 }
 
 function setFilter(type, filter) {
-    let dropdownId;
     if (type === 'income') {
         filterIncome = filter;
-        dropdownId = 'filterDropdownIncome';
-        if (sortModeIncome) {
-            sortModeIncome = false;
-            document.getElementById('sortBtnIncome').classList.remove('active');
-        }
     } else {
         filterExpense = filter;
-        dropdownId = 'filterDropdownExpense';
-        if (sortModeExpense) {
-            sortModeExpense = false;
-            document.getElementById('sortBtnExpense').classList.remove('active');
-        }
     }
     localStorage.setItem(`${type}Filter`, filter);
+    const dropdownId = type === 'income' ? 'filterDropdownIncome' : 'filterDropdownExpense';
     document.getElementById(dropdownId).classList.remove('active');
     document.querySelectorAll(`#${dropdownId} .filter-option`).forEach(opt => opt.classList.remove('selected'));
     document.querySelector(`#${dropdownId} [data-filter="${filter}"]`).classList.add('selected');
@@ -750,9 +736,7 @@ function setFilter(type, filter) {
 
 function exportData() {
     const dataStr = JSON.stringify(allData, null, 2);
-    const dataBlob = new Blob([dataStr], {
-        type: 'application/json'
-    });
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
@@ -788,7 +772,6 @@ function importData(event) {
 function showChart(type) {
     const data = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     const checkedData = data.filter(t => t.checked);
-
     if (checkedData.length === 0) {
         const message = data.length === 0 ? 'אין נתונים להצגה בגרף.' : 'אין פריטים מסומנים להצגה בגרף.';
         openConfirmModal('מידע', message, closeConfirmModal);
@@ -796,13 +779,11 @@ function showChart(type) {
     }
     document.getElementById('chartModalTitle').textContent = type === 'income' ? 'התפלגות הכנסות' : 'התפלגות הוצאות';
     document.getElementById('chartModal').classList.add('active');
-
     const labels = checkedData.map(t => t.description);
     const amounts = checkedData.map(t => t.amount);
     const colors = generateColors(checkedData.length);
     const ctx = document.getElementById('pieChart').getContext('2d');
     if (chartInstance) chartInstance.destroy();
-
     chartInstance = new Chart(ctx, {
         type: 'pie',
         data: {
@@ -822,9 +803,7 @@ function showChart(type) {
                     position: 'bottom',
                     labels: {
                         padding: 15,
-                        font: {
-                            size: 14
-                        },
+                        font: { size: 14 },
                         color: getComputedStyle(document.body).getPropertyValue('--text-primary')
                     }
                 },
@@ -857,11 +836,7 @@ function deleteAllData() {
         saveStateForUndo();
         allData = {};
         currentMonth = getCurrentMonthKey();
-        allData[currentMonth] = {
-            income: [],
-            expenses: [],
-            balance: 0
-        };
+        allData[currentMonth] = { income: [], expenses: [], balance: 0 };
         document.getElementById('currentBalanceInput').value = 0;
         saveDataToLocal();
         render();
@@ -874,10 +849,17 @@ function openModal(type, id = null) {
     editingId = id;
     const modal = document.getElementById('transactionModal');
     const title = document.getElementById('modalTitle');
-    const [descriptionInput, amountInput, loanOriginalAmountInput, loanTotalInput, loanCurrentInput] = ['descriptionInput', 'amountInput', 'loanOriginalAmountInput', 'loanTotalInput', 'loanCurrentInput'].map(id => document.getElementById(id));
+    const descriptionInput = document.getElementById('descriptionInput');
+    const amountInput = document.getElementById('amountInput');
+    const recurrenceCheckbox = document.getElementById('recurrenceCheckbox');
+    const recurrenceDayInput = document.getElementById('recurrenceDayInput');
 
     document.getElementById('typeLoan').classList.toggle('disabled', type === 'income');
     document.getElementById('typeVariable').classList.toggle('disabled', type === 'income');
+    
+    [descriptionInput, amountInput, recurrenceDayInput].forEach(input => input.value = '');
+    recurrenceCheckbox.checked = false;
+    document.querySelector('.day-of-month-group').style.display = 'none';
 
     if (id) {
         const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
@@ -887,21 +869,32 @@ function openModal(type, id = null) {
         title.textContent = 'עריכת תנועה';
         descriptionInput.value = transaction.description;
         amountInput.value = transaction.amount;
-        selectTransactionType(transaction.type || 'regular');
+        
+        let effectiveType = transaction.type;
+        if (effectiveType === 'regular') effectiveType = 'onetime';
+        selectTransactionType(effectiveType);
+
         if (transaction.type === 'loan') {
-            loanOriginalAmountInput.value = transaction.originalLoanAmount || '';
-            loanTotalInput.value = transaction.loanTotal || '';
-            loanCurrentInput.value = transaction.loanCurrent || '';
+            document.getElementById('loanOriginalAmountInput').value = transaction.originalLoanAmount || '';
+            document.getElementById('loanTotalInput').value = transaction.loanTotal || '';
+            document.getElementById('loanCurrentInput').value = transaction.loanCurrent || '';
         }
+        
+        if (transaction.recurrence && transaction.recurrence.isRecurring) {
+            recurrenceCheckbox.checked = true;
+            recurrenceDayInput.value = transaction.recurrence.dayOfMonth;
+            document.querySelector('.day-of-month-group').style.display = 'flex';
+        }
+
     } else {
         title.textContent = type === 'income' ? 'הוספת הכנסה' : 'הוספת הוצאה';
-        [descriptionInput, amountInput, loanOriginalAmountInput, loanTotalInput, loanCurrentInput].forEach(input => input.value = '');
-        selectTransactionType('regular');
+        ['loanOriginalAmountInput', 'loanTotalInput', 'loanCurrentInput'].forEach(id => document.getElementById(id).value = '');
+        selectTransactionType('onetime');
     }
+
     modal.classList.add('active');
     descriptionInput.focus();
 }
-
 
 function closeModal() {
     document.getElementById('transactionModal').classList.remove('active');
@@ -912,17 +905,32 @@ function saveTransaction() {
     saveStateForUndo();
     const description = document.getElementById('descriptionInput').value.trim();
     const amount = parseFloat(document.getElementById('amountInput').value);
+    const isRecurring = document.getElementById('recurrenceCheckbox').checked;
+    const dayOfMonth = parseInt(document.getElementById('recurrenceDayInput').value, 10);
 
     if (!description || !amount || amount <= 0) {
         openConfirmModal('שגיאה', 'נא למלא תיאור וסכום חיובי.', closeConfirmModal);
+        return;
+    }
+    
+    if (isRecurring && (!dayOfMonth || dayOfMonth < 1 || dayOfMonth > 31)) {
+        openConfirmModal('שגיאה', 'יש להזין יום חוקי בחודש (1-31) עבור תנועה קבועה.', closeConfirmModal);
         return;
     }
 
     const transactionData = {
         description,
         amount,
-        type: selectedTransactionType
+        type: selectedTransactionType,
+        recurrence: {
+            isRecurring: isRecurring,
+            dayOfMonth: isRecurring ? dayOfMonth : null
+        }
     };
+    
+    if (transactionData.type === 'regular') {
+        transactionData.type = 'onetime';
+    }
 
     if (selectedTransactionType === 'loan') {
         const originalLoanAmount = parseFloat(document.getElementById('loanOriginalAmountInput').value);
@@ -936,6 +944,8 @@ function saveTransaction() {
         transactionData.loanTotal = loanTotal;
         transactionData.loanCurrent = loanCurrent;
         transactionData.completed = transactionData.loanCurrent >= transactionData.loanTotal;
+        transactionData.type = 'loan';
+        transactionData.recurrence.isRecurring = false;
     }
 
     const list = currentType === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
@@ -944,14 +954,10 @@ function saveTransaction() {
         const indexToUpdate = list.findIndex(t => t.id == editingId);
         if (indexToUpdate > -1) {
             const existingTransaction = list[indexToUpdate];
-            let checkedStatus = existingTransaction.checked;
+            list[indexToUpdate] = { ...existingTransaction, ...transactionData };
             if (transactionData.type === 'loan') {
-                checkedStatus = !transactionData.completed;
+                list[indexToUpdate].checked = !transactionData.completed;
             }
-            list[indexToUpdate] = { ...existingTransaction,
-                ...transactionData,
-                checked: checkedStatus
-            };
         }
     } else {
         const newTransaction = {
@@ -975,7 +981,6 @@ function deleteTransaction(event, type, id) {
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     const transaction = list.find(t => t.id == id);
     if (!transaction) return;
-
     const message = `האם למחוק את <b>"${sanitizeHTML(transaction.description)}"</b> בסך <b>₪${transaction.amount.toLocaleString('he-IL')}</b>?`;
     openConfirmModal('אישור מחיקת תנועה', message, () => {
         saveStateForUndo();
@@ -1008,12 +1013,10 @@ function editAmount(event, type, id) {
     const amountWrapper = event.currentTarget;
     if (amountWrapper.classList.contains('editing')) return;
     if (currentEditingElement) currentEditingElement.querySelector('.inline-edit-input').blur();
-
     const amountInput = amountWrapper.querySelector('.inline-edit-input');
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     const transaction = list.find(t => t.id == id);
     if (!transaction) return;
-
     currentEditingElement = amountWrapper;
     amountWrapper.dataset.id = id;
     amountWrapper.classList.add('editing');
@@ -1027,24 +1030,19 @@ function saveAmount(event, type) {
     const amountWrapper = input.closest('.transaction-amount');
     const id = amountWrapper.dataset.id;
     const newAmount = parseFloat(input.value);
-
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     const transaction = list.find(t => t.id == id);
-
     if (currentEditingElement) {
         currentEditingElement.classList.remove('editing');
         currentEditingElement = null;
     }
-
     if (transaction && !isNaN(newAmount) && newAmount >= 0 && newAmount !== transaction.amount) {
         saveStateForUndo();
         transaction.amount = newAmount;
     }
-
     saveDataToLocal();
     render();
 }
-
 
 function handleEditKeys(event) {
     if (event.key === 'Enter') {
@@ -1059,10 +1057,8 @@ function openApplyOptionsModal(type, id) {
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     const transaction = list.find(t => t.id == id);
     if (!transaction) return;
-
     const modal = document.getElementById('applyOptionsModal');
     document.getElementById('applyOptionsTransactionInfo').innerHTML = `<span>${sanitizeHTML(transaction.description)}</span><span class="${type === 'income' ? 'positive' : 'negative'}">₪${transaction.amount.toLocaleString('he-IL')}</span>`;
-
     modal.querySelectorAll('.apply-option').forEach(option => {
         const newOption = option.cloneNode(true);
         option.parentNode.replaceChild(newOption, option);
@@ -1076,24 +1072,20 @@ function handleApplyAction(type, id, action) {
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     const transaction = list.find(t => t.id == id);
     if (!transaction) return;
-
     const amount = transaction.amount;
     let currentBalanceValue = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
-
     if (type === 'income') {
         currentBalanceValue += amount;
     } else {
         currentBalanceValue -= amount;
     }
     document.getElementById('currentBalanceInput').value = currentBalanceValue;
-
     if (action === 'apply-delete') {
         const indexToDelete = list.findIndex(t => t.id == id);
         if (indexToDelete > -1) list.splice(indexToDelete, 1);
     } else if (action === 'apply-zero') {
         transaction.amount = 0;
     }
-
     saveDataToLocal();
     render();
     closeApplyOptionsModal();
@@ -1122,151 +1114,136 @@ function render() {
     const currentData = allData[currentMonth];
     if (!currentData) return;
 
-    let filteredIncome = [...currentData.income];
+    // --- RENDER INCOME ---
+    let filteredIncome = [...(currentData.income || [])];
     if (filterIncome !== 'all') {
-        if (filterIncome === 'active') {
-            filteredIncome = filteredIncome.filter(t => t.checked);
-        } else if (filterIncome === 'inactive') {
-            filteredIncome = filteredIncome.filter(t => !t.checked);
-        } else {
-            filteredIncome = filteredIncome.filter(t => t.type === filterIncome);
-        }
+        if (filterIncome === 'active') filteredIncome = filteredIncome.filter(t => t.checked);
+        else if (filterIncome === 'inactive') filteredIncome = filteredIncome.filter(t => !t.checked);
+        else if (filterIncome === 'regular') filteredIncome = filteredIncome.filter(t => t.recurrence?.isRecurring);
+        else filteredIncome = filteredIncome.filter(t => t.type === filterIncome);
     }
+    
+    const incomeSort = sortSettings.income;
+    if (incomeSort.mode === 'alpha') filteredIncome.sort((a, b) => a.description.localeCompare(b.description, 'he'));
+    else if (incomeSort.mode === 'amount') filteredIncome.sort((a, b) => incomeSort.direction === 'asc' ? a.amount - b.amount : b.amount - a.amount);
+    else if (incomeSort.mode === 'date') filteredIncome.sort((a, b) => (a.recurrence?.dayOfMonth || 99) - (b.recurrence?.dayOfMonth || 99));
 
     const incomeList = document.getElementById('incomeList');
-    if (filteredIncome.length === 0) {
-        incomeList.innerHTML = '<div class="empty-state">אין הכנסות להצגה</div>';
-    } else {
-        incomeList.innerHTML = filteredIncome.map((t) => {
-            let badgeClass = 'badge-regular';
-            let badgeText = 'קבוע';
-            if (t.type === 'onetime') {
-                badgeClass = 'badge-onetime';
-                badgeText = 'חד-פעמי';
-            }
-            const originalIndex = currentData.income.findIndex(item => item.id === t.id);
-            return `
-                <div class="transaction-wrapper">
-                    <div class="transaction-item ${!t.checked ? 'inactive' : ''}">
-                        <div class="transaction-info">
-                            <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'income', '${t.id}')">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                            </div>
-                            <div class="transaction-details">
-                                <div class="transaction-text">${sanitizeHTML(t.description)} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
-                            </div>
-                        </div>
-                        <div class="transaction-amount" onclick="editAmount(event, 'income', '${t.id}')">
-                            <span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>
-                            <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'income')">
-                        </div>
-                        <div class="item-controls">
-                            <div class="sort-buttons ${sortModeIncome ? 'visible' : ''}">
-                                <button class="sort-btn" onclick="moveItem(event, 'income', '${t.id}', 'up')" ${originalIndex === 0 ? 'disabled' : ''}>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
-                                </button>
-                                <button class="sort-btn" onclick="moveItem(event, 'income', '${t.id}', 'down')" ${originalIndex === currentData.income.length - 1 ? 'disabled' : ''}>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                </button>
-                            </div>
-                            <div class="transaction-actions">
-                                <button class="action-btn edit" onclick="openModal('income', '${t.id}')" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
-                                <button class="action-btn apply" onclick="openApplyOptionsModal('income', '${t.id}')" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
-                                <button class="action-btn delete" onclick="deleteTransaction(event, 'income', '${t.id}')" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
-
-    let filteredExpenses = [...currentData.expenses];
-    if (filterExpense !== 'all') {
-        if (filterExpense === 'active') {
-            filteredExpenses = filteredExpenses.filter(t => t.checked);
-        } else if (filterExpense === 'inactive') {
-            filteredExpenses = filteredExpenses.filter(t => !t.checked);
-        } else {
-            filteredExpenses = filteredExpenses.filter(t => t.type === filterExpense);
-        }
-    }
-
-    const expenseList = document.getElementById('expenseList');
-    if (filteredExpenses.length === 0) {
-        expenseList.innerHTML = '<div class="empty-state">אין הוצאות להצגה</div>';
-    } else {
-        expenseList.innerHTML = filteredExpenses.map((t) => {
-            const originalIndex = currentData.expenses.findIndex(item => item.id === t.id);
-            let badgeClass = 'badge-regular',
-                badgeText = 'קבוע';
-            const isCompleted = t.completed;
-
-            if (t.type === 'loan') {
-                badgeClass = isCompleted ? 'badge-loan completed' : 'badge-loan';
-                badgeText = isCompleted ? 'שולמה' : 'הלוואה';
-            } else if (t.type === 'variable') {
-                badgeClass = 'badge-variable';
-                badgeText = `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>&nbsp; כרטיס אשראי`;
-            } else if (t.type === 'onetime') {
-                badgeClass = 'badge-onetime';
-                badgeText = 'חד-פעמי';
-            }
-
-            const loanDetails = (t.type === 'loan' && t.originalLoanAmount) ? `<div class="loan-original-amount">סכום הלוואה: ₪${t.originalLoanAmount.toLocaleString('he-IL')}</div>` : '';
-            let progressBar = '';
-
-            if (t.type === 'loan' && t.loanTotal) {
-                const percentage = (t.loanCurrent / t.loanTotal) * 100;
-                const amountPaid = t.amount * t.loanCurrent;
-                const isComplete = t.loanCurrent >= t.loanTotal;
-                progressBar = `
-                    <div class="loan-progress ${t.isExpanded ? 'visible' : ''}">
-                        <div class="loan-progress-container">
-                            <div class="progress-bar-container">
-                                <div class="progress-bar-fill" style="width: ${percentage}%"></div>
-                            </div>
-                            <div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div>
-                        </div>
-                        <button class="loan-next-payment-btn" onclick="nextLoanPayment(event, 'expense', '${t.id}')" ${isComplete ? 'disabled' : ''}>
-                            ${isComplete ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'}
-                        </button>
-                    </div>
-                `;
-            }
-
-            const itemHTML = `
-                <div class="transaction-item ${t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${isCompleted ? 'completed' : ''}" ${t.type === 'loan' ? `onclick="toggleLoanProgress('expense', '${t.id}')"` : ''}>
+    incomeList.innerHTML = filteredIncome.length === 0 ? '<div class="empty-state">אין הכנסות להצגה</div>' : filteredIncome.map((t) => {
+        const isRecurring = t.recurrence?.isRecurring;
+        const badgeClass = isRecurring ? 'badge-regular' : '';
+        const badgeText = isRecurring ? 'קבוע' : '';
+        const recurrenceIcon = isRecurring ? `<svg class="recurrence-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>` : '';
+        const originalIndex = currentData.income.findIndex(item => item.id === t.id);
+        
+        return `
+            <div class="transaction-wrapper">
+                <div class="transaction-item ${!t.checked ? 'inactive' : ''}">
                     <div class="transaction-info">
-                        <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'expense', '${t.id}')">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                        </div>
+                        <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'income', '${t.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
                         <div class="transaction-details">
-                            <div class="transaction-text">${sanitizeHTML(t.description)} <span class="transaction-badge ${badgeClass}">${badgeText}</span></div>
-                            ${loanDetails}
+                            ${isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">מתקבל ב-${t.recurrence.dayOfMonth} לחודש</div>` : ''}
+                            <div class="transaction-text">${recurrenceIcon} ${sanitizeHTML(t.description)} ${badgeText ? `<span class="transaction-badge ${badgeClass}">${badgeText}</span>` : ''}</div>
                         </div>
                     </div>
-                    <div class="transaction-amount" onclick="editAmount(event, 'expense', '${t.id}')">
+                    <div class="transaction-amount" onclick="editAmount(event, 'income', '${t.id}')">
                         <span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>
-                        <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'expense')">
+                        <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'income')">
                     </div>
                     <div class="item-controls">
-                        <div class="sort-buttons ${sortModeExpense ? 'visible' : ''}">
-                            <button class="sort-btn" onclick="moveItem(event, 'expense', '${t.id}', 'up')" ${originalIndex === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
-                            <button class="sort-btn" onclick="moveItem(event, 'expense', '${t.id}', 'down')" ${originalIndex === currentData.expenses.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+                        <div class="sort-buttons ${manualSortActive.income ? 'visible' : ''}">
+                            <button class="sort-btn" onclick="moveItem(event, 'income', '${t.id}', 'up')" ${originalIndex === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
+                            <button class="sort-btn" onclick="moveItem(event, 'income', '${t.id}', 'down')" ${originalIndex === (currentData.income || []).length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
                         </div>
                         <div class="transaction-actions">
-                            <button class="action-btn edit" onclick="openModal('expense', '${t.id}')" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
-                            <button class="action-btn apply" onclick="openApplyOptionsModal('expense', '${t.id}')" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
-                            <button class="action-btn delete" onclick="deleteTransaction(event, 'expense', '${t.id}')" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                            <button class="action-btn edit" onclick="openModal('income', '${t.id}')" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+                            <button class="action-btn apply" onclick="openApplyOptionsModal('income', '${t.id}')" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
+                            <button class="action-btn delete" onclick="deleteTransaction(event, 'income', '${t.id}')" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
                         </div>
                     </div>
                 </div>
-            `;
-            return `<div class="transaction-wrapper">${itemHTML}${progressBar}</div>`;
-        }).join('');
+            </div>`;
+    }).join('');
+
+    // --- RENDER EXPENSES ---
+    let filteredExpenses = [...(currentData.expenses || [])];
+    if (filterExpense !== 'all') {
+        if (filterExpense === 'active') filteredExpenses = filteredExpenses.filter(t => t.checked);
+        else if (filterExpense === 'inactive') filteredExpenses = filteredExpenses.filter(t => !t.checked);
+        else if (filterExpense === 'regular') filteredExpenses = filteredExpenses.filter(t => t.recurrence?.isRecurring);
+        else filteredExpenses = filteredExpenses.filter(t => t.type === filterExpense);
     }
 
+    const expenseSort = sortSettings.expense;
+    if (expenseSort.mode === 'alpha') filteredExpenses.sort((a, b) => a.description.localeCompare(b.description, 'he'));
+    else if (expenseSort.mode === 'amount') filteredExpenses.sort((a, b) => expenseSort.direction === 'asc' ? a.amount - b.amount : b.amount - a.amount);
+    else if (expenseSort.mode === 'date') filteredExpenses.sort((a, b) => (a.recurrence?.dayOfMonth || 99) - (b.recurrence?.dayOfMonth || 99));
+
+    const expenseList = document.getElementById('expenseList');
+    expenseList.innerHTML = filteredExpenses.length === 0 ? '<div class="empty-state">אין הוצאות להצגה</div>' : filteredExpenses.map((t) => {
+        const originalIndex = currentData.expenses.findIndex(item => item.id === t.id);
+        const isRecurring = t.recurrence?.isRecurring;
+        let badgeClass = '', badgeText = '';
+
+        if (t.type === 'loan') {
+            badgeClass = t.completed ? 'badge-loan completed' : 'badge-loan';
+            badgeText = t.completed ? 'שולמה' : 'הלוואה';
+        } else if (t.type === 'variable') {
+            badgeClass = 'badge-variable';
+            badgeText = `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>&nbsp; כרטיס אשראי`;
+        } else if (isRecurring) {
+            badgeClass = 'badge-regular';
+            badgeText = 'קבוע';
+        }
+
+        const recurrenceIcon = isRecurring ? `<svg class="recurrence-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>` : '';
+        const loanDetails = (t.type === 'loan' && t.originalLoanAmount) ? `<div class="loan-original-amount">סכום הלוואה: ₪${t.originalLoanAmount.toLocaleString('he-IL')}</div>` : '';
+        let progressBar = '';
+        if (t.type === 'loan' && t.loanTotal) {
+            const percentage = (t.loanCurrent / t.loanTotal) * 100;
+            const amountPaid = t.amount * t.loanCurrent;
+            const isComplete = t.loanCurrent >= t.loanTotal;
+            progressBar = `
+                <div class="loan-progress ${t.isExpanded ? 'visible' : ''}">
+                    <div class="loan-progress-container"><div class="progress-bar-container"><div class="progress-bar-fill" style="width: ${percentage}%"></div></div>
+                        <div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div>
+                    </div>
+                    <button class="loan-next-payment-btn" onclick="nextLoanPayment(event, 'expense', '${t.id}')" ${isComplete ? 'disabled' : ''}>
+                        ${isComplete ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'}
+                    </button>
+                </div>`;
+        }
+        const itemHTML = `
+            <div class="transaction-item ${t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${t.completed ? 'completed' : ''}" ${t.type === 'loan' ? `onclick="toggleLoanProgress('expense', '${t.id}')"` : ''}>
+                <div class="transaction-info">
+                    <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'expense', '${t.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+                    <div class="transaction-details">
+                        ${isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">יורד ב-${t.recurrence.dayOfMonth} לחודש</div>` : ''}
+                        <div class="transaction-text">${recurrenceIcon} ${sanitizeHTML(t.description)} ${badgeText ? `<span class="transaction-badge ${badgeClass}">${badgeText}</span>` : ''}</div>
+                        ${loanDetails}
+                    </div>
+                </div>
+                <div class="transaction-amount" onclick="editAmount(event, 'expense', '${t.id}')">
+                    <span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>
+                    <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'expense')">
+                </div>
+                <div class="item-controls">
+                    <div class="sort-buttons ${manualSortActive.expense ? 'visible' : ''}">
+                        <button class="sort-btn" onclick="moveItem(event, 'expense', '${t.id}', 'up')" ${originalIndex === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
+                        <button class="sort-btn" onclick="moveItem(event, 'expense', '${t.id}', 'down')" ${originalIndex === (currentData.expenses || []).length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+                    </div>
+                    <div class="transaction-actions">
+                        <button class="action-btn edit" onclick="openModal('expense', '${t.id}')" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+                        <button class="action-btn apply" onclick="openApplyOptionsModal('expense', '${t.id}')" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
+                        <button class="action-btn delete" onclick="deleteTransaction(event, 'expense', '${t.id}')" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                    </div>
+                </div>
+            </div>
+        `;
+        return `<div class="transaction-wrapper">${itemHTML}${progressBar}</div>`;
+    }).join('');
+
+    // --- UPDATE TOTALS & SUMMARY ---
     const incomeTotal = filteredIncome.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const expenseTotal = filteredExpenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const currentBalanceValue = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
@@ -1276,7 +1253,6 @@ function render() {
         all: 'סה״כ',
         regular: 'סה״כ קבועות',
         variable: 'סה״כ כ.אשראי',
-        onetime: 'סה״כ חד-פעמיות',
         active: 'סה״כ פעילות',
         inactive: 'סה״כ לא פעילות',
         loan: 'סה״כ הלוואות'
@@ -1284,41 +1260,147 @@ function render() {
     document.getElementById('incomeTotalLabel').textContent = filterIncome === 'all' ? 'סה״כ הכנסות' : labelMap[filterIncome];
     document.getElementById('expenseTotalLabel').textContent = filterExpense === 'all' ? 'סה״כ הוצאות' : labelMap[filterExpense];
 
-    const totalActiveIncome = currentData.income.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
-    const totalActiveExpenses = currentData.expenses.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
+    const totalActiveIncome = (currentData.income || []).filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
+    const totalActiveExpenses = (currentData.expenses || []).filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
 
     document.getElementById('incomeCollapsedSummary').innerHTML = `<span class="summary-label">סה״כ הכנסות:</span> <span class="summary-value">₪${totalActiveIncome.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
     document.getElementById('expenseCollapsedSummary').innerHTML = `<span class="summary-label">סה״כ הוצאות:</span> <span class="summary-value">₪${totalActiveExpenses.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
     document.getElementById('summaryCollapsedSummary').innerHTML = `<span class="summary-label">עו"ש צפוי:</span> <span class="summary-value ${finalBalance >= 0 ? 'positive' : 'negative'}">₪${finalBalance.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
-    document.getElementById('incomeTotal').textContent = '₪' + incomeTotal.toLocaleString('he-IL', {
-        minimumFractionDigits: 2
-    });
-    document.getElementById('expenseTotal').textContent = '₪' + expenseTotal.toLocaleString('he-IL', {
-        minimumFractionDigits: 2
-    });
+    document.getElementById('incomeTotal').textContent = '₪' + incomeTotal.toLocaleString('he-IL', { minimumFractionDigits: 2 });
+    document.getElementById('expenseTotal').textContent = '₪' + expenseTotal.toLocaleString('he-IL', { minimumFractionDigits: 2 });
 
-    document.querySelector('.income-card .chart-btn').disabled = filterIncome !== 'all';
-    document.querySelector('.income-card .sort-mode-btn').disabled = filterIncome !== 'all';
-    document.querySelector('.expense-card .chart-btn').disabled = filterExpense !== 'all';
-    document.querySelector('.expense-card .sort-mode-btn').disabled = filterExpense !== 'all';
+    const isIncomeListEmpty = (currentData.income || []).length === 0;
+    const isExpenseListEmpty = (currentData.expenses || []).length === 0;
+    document.querySelector('.income-card .chart-btn').disabled = isIncomeListEmpty;
+    document.getElementById('sortBtnIncome').disabled = isIncomeListEmpty;
+    document.getElementById('filterBtnIncome').disabled = isIncomeListEmpty;
+    document.querySelector('.expense-card .chart-btn').disabled = isExpenseListEmpty;
+    document.getElementById('sortBtnExpense').disabled = isExpenseListEmpty;
+    document.getElementById('filterBtnExpense').disabled = isExpenseListEmpty;
 
     populateMonthJumper();
     updateMonthDisplay();
     updateBalanceIndicator();
     updateLoansSummary();
     updateSummary();
-
-    // הוספת לוגיקה להשבתת כפתורי מחיקה
     const deleteAllBtn = document.querySelector('.backup-controls .btn-delete-all-small:last-of-type');
     const deleteMonthBtn = document.getElementById('deleteMonthBtn');
-    const isDataEmpty = !currentData || (currentData.income.length === 0 && currentData.expenses.length === 0 && Object.keys(allData).length <= 1);
+    const isDataEmpty = !currentData || ((currentData.income || []).length === 0 && (currentData.expenses || []).length === 0 && Object.keys(allData).length <= 1);
+    if (deleteAllBtn) deleteAllBtn.disabled = isDataEmpty;
+    if (deleteMonthBtn) deleteMonthBtn.disabled = isDataEmpty;
+}
 
-    if (deleteAllBtn) {
-        deleteAllBtn.disabled = isDataEmpty;
+
+// ================================================
+// =========== פונקציות לניהול תנועות קבועות ===========
+// ================================================
+let allRecurringTransactions = new Map();
+
+function toggleRecurringDropdown(type) {
+    const dropdownId = type === 'income' ? 'recurringDropdownIncome' : 'recurringDropdownExpense';
+    const dropdown = document.getElementById(dropdownId);
+    document.getElementById(type === 'income' ? 'filterDropdownIncome' : 'filterDropdownExpense').classList.remove('active');
+    if (dropdown.classList.contains('active')) {
+        dropdown.classList.remove('active');
+        return;
     }
-    if (deleteMonthBtn) {
-        deleteMonthBtn.disabled = isDataEmpty;
+    populateRecurringDropdown(type);
+    dropdown.classList.add('active');
+}
+
+function populateRecurringDropdown(type) {
+    const dropdownId = type === 'income' ? 'recurringDropdownIncome' : 'recurringDropdownExpense';
+    const dropdown = document.getElementById(dropdownId);
+    allRecurringTransactions.clear();
+    const allMonthKeys = Object.keys(allData).sort();
+    allMonthKeys.forEach(monthKey => {
+        const monthData = allData[monthKey];
+        const list = type === 'income' ? (monthData.income || []) : (monthData.expenses || []);
+        list.forEach(t => {
+            if (t.recurrence && t.recurrence.isRecurring) {
+                allRecurringTransactions.set(t.description, t);
+            }
+        });
+    });
+    const recurringList = Array.from(allRecurringTransactions.values());
+    const currentMonthList = type === 'income' ? (allData[currentMonth].income || []) : (allData[currentMonth].expenses || []);
+    const currentDescriptions = new Set(currentMonthList.map(t => t.description));
+    dropdown.innerHTML = '';
+    if (recurringList.length === 0) {
+        dropdown.innerHTML = '<div class="recurring-dropdown-header">לא נמצאו תנועות קבועות</div>';
+        return;
     }
+    dropdown.innerHTML = '<div class="recurring-dropdown-header">בחר תנועה להוספה</div>';
+    const unaddedTransactions = [];
+    recurringList.forEach(t => {
+        const isAlreadyAdded = currentDescriptions.has(t.description);
+        if (!isAlreadyAdded) {
+            unaddedTransactions.push(t);
+        }
+        const item = document.createElement('div');
+        item.classList.add('filter-option', 'recurring-item');
+        if (isAlreadyAdded) {
+            item.classList.add('disabled');
+        }
+        const amountDisplay = `₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}`;
+        const icon = isAlreadyAdded ?
+            `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>` :
+            `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+        item.innerHTML = `
+            <div>${icon} ${sanitizeHTML(t.description)}</div>
+            <div class="amount">${amountDisplay}</div>
+        `;
+        if (!isAlreadyAdded) {
+            item.onclick = () => addRecurringTransaction(type, t.description);
+        }
+        dropdown.appendChild(item);
+    });
+    if (unaddedTransactions.length > 0) {
+        const footer = document.createElement('div');
+        footer.classList.add('recurring-dropdown-footer');
+        const addAllButton = document.createElement('div');
+        addAllButton.classList.add('filter-option');
+        addAllButton.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            הוסף הכל (${unaddedTransactions.length})
+        `;
+        addAllButton.onclick = () => addAllRecurringTransactions(type);
+        footer.appendChild(addAllButton);
+        dropdown.appendChild(footer);
+    }
+}
+
+function addAllRecurringTransactions(type) {
+    saveStateForUndo();
+    const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
+    const currentDescriptions = new Set(list.map(t => t.description));
+    let addedCount = 0;
+    allRecurringTransactions.forEach(t => {
+        if (!currentDescriptions.has(t.description)) {
+            const newTransaction = { ...t, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${addedCount}`, checked: true };
+            list.push(newTransaction);
+            addedCount++;
+        }
+    });
+    if (addedCount > 0) {
+        saveDataToLocal();
+        render();
+    }
+    const dropdownId = type === 'income' ? 'recurringDropdownIncome' : 'recurringDropdownExpense';
+    document.getElementById(dropdownId).classList.remove('active');
+}
+
+function addRecurringTransaction(type, description) {
+    const transactionToAdd = allRecurringTransactions.get(description);
+    if (!transactionToAdd) return;
+    saveStateForUndo();
+    const newTransaction = { ...transactionToAdd, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true };
+    const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
+    list.push(newTransaction);
+    saveDataToLocal();
+    render();
+    const dropdownId = type === 'income' ? 'recurringDropdownIncome' : 'recurringDropdownExpense';
+    document.getElementById(dropdownId).classList.remove('active');
 }
 
 // ================================================
@@ -1330,15 +1412,17 @@ document.addEventListener('DOMContentLoaded', () => {
     loadData();
     loadCardStates();
     setupBalanceControls();
-
+    loadSortSettings(); // === התיקון: קריאה לפונקציה החדשה בטעינת האפליקציה ===
+    
     document.getElementById('prevMonthBtn').addEventListener('click', () => navigateMonths(-1));
     document.getElementById('nextMonthBtn').addEventListener('click', () => navigateMonths(1));
-    document.getElementById('deleteMonthBtn').addEventListener('click', openEditMonthModal); // שונה
+    document.getElementById('deleteMonthBtn').addEventListener('click', openEditMonthModal);
     document.getElementById('monthJumperBtn').addEventListener('click', toggleMonthJumper);
-
     document.getElementById('loadFromCloudBtn').addEventListener('click', handleLoadFromCloud);
     document.getElementById('saveToCloudBtn').addEventListener('click', handleSaveToCloud);
-
+    document.getElementById('recurrenceCheckbox').addEventListener('change', (e) => {
+        document.querySelector('.day-of-month-group').style.display = e.target.checked ? 'flex' : 'none';
+    });
     const newMonthModal = document.getElementById('newMonthModal');
     document.getElementById('copyMonthBtn').addEventListener('click', () => {
         handleCreateNewMonth(newMonthModal.dataset.newMonthKey, newMonthModal.dataset.prevMonthKey, true);
@@ -1347,13 +1431,9 @@ document.addEventListener('DOMContentLoaded', () => {
         handleCreateNewMonth(newMonthModal.dataset.newMonthKey, newMonthModal.dataset.prevMonthKey, false);
     });
     document.getElementById('cancelNewMonthBtn').addEventListener('click', closeNewMonthModal);
-    
-    // חיבור כפתורים לחלון עריכת חודש
     document.getElementById('resetMonthBtn').addEventListener('click', resetCurrentMonth);
     document.getElementById('deleteMonthPermanentlyBtn').addEventListener('click', deleteCurrentMonth);
     document.getElementById('cancelEditMonthBtn').addEventListener('click', closeEditMonthModal);
-
-
     document.querySelectorAll('#filterDropdownIncome .filter-option, #filterDropdownExpense .filter-option').forEach(option => {
         option.addEventListener('click', (e) => {
             const dropdown = option.closest('.filter-dropdown');
@@ -1362,7 +1442,6 @@ document.addEventListener('DOMContentLoaded', () => {
             setFilter(type, filter);
         });
     });
-
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeModal();
@@ -1373,41 +1452,37 @@ document.addEventListener('DOMContentLoaded', () => {
             closeEditMonthModal();
         }
     });
-
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.dropdown-container')) {
             document.getElementById('filterDropdownIncome').classList.remove('active');
             document.getElementById('filterDropdownExpense').classList.remove('active');
+            document.getElementById('sortDropdownIncome').classList.remove('active');
+            document.getElementById('sortDropdownExpense').classList.remove('active');
             document.getElementById('monthJumperList').classList.remove('active');
+            document.getElementById('recurringDropdownIncome').classList.remove('active');
+            document.getElementById('recurringDropdownExpense').classList.remove('active');
         }
-
         if (e.target.classList.contains('modal')) {
             e.target.classList.remove('active');
         }
     });
-
     document.body.classList.remove('preload');
 });
 
 function openConfirmModal(title, text, onConfirm, onCancel = closeConfirmModal) {
     document.getElementById('confirmModalTitle').textContent = title;
     document.getElementById('confirmModalText').innerHTML = text;
-
     const confirmBtn = document.getElementById('confirmModalConfirmBtn');
     const cancelBtn = document.querySelector('#confirmModal .modal-btn-cancel');
-
     const newConfirmBtn = confirmBtn.cloneNode(true);
     confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
     newConfirmBtn.addEventListener('click', onConfirm);
-
     const newCancelBtn = cancelBtn.cloneNode(true);
     cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
     newCancelBtn.addEventListener('click', onCancel);
-
     const isInfo = title === 'שגיאה' || title === 'מידע' || title === 'הצלחה';
     newConfirmBtn.style.display = isInfo ? 'none' : 'flex';
     newCancelBtn.textContent = isInfo ? 'סגור' : 'ביטול';
-
     document.getElementById('confirmModal').classList.add('active');
 }
 

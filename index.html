@@ -83,15 +83,23 @@
                                 <div class="filter-option" data-filter="active"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> תנועות פעילות</div>
                                 <div class="filter-option" data-filter="inactive"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg> תנועות לא פעילות</div>
                                 <div class="filter-option" data-filter="regular"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> קבועות</div>
-                                <div class="filter-option" data-filter="onetime"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> חד-פעמיות</div>
                             </div>
                         </div>
-                        <button class="sort-mode-btn" id="sortBtnIncome" onclick="toggleSortMode('income')" title="סידור">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>
+                    <div class="dropdown-container">
+                        <button class="sort-mode-btn" id="sortBtnIncome" onclick="toggleSortDropdown('income')" title="מיון">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18"/><path d="M3 10h12"/><path d="M3 16h6"/></svg>
                         </button>
+                        <div class="filter-dropdown" id="sortDropdownIncome"></div>
+                    </div>
                         <button class="chart-btn" onclick="showChart('income')" title="הצג גרף">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
                         </button>
+                        <div class="dropdown-container">
+                            <button class="recurring-btn" id="recurringBtnIncome" onclick="toggleRecurringDropdown('income')" title="טען תנועות קבועות">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+                            </button>
+                            <div class="recurring-dropdown" id="recurringDropdownIncome"></div>
+                        </div>
                         <button class="add-btn" onclick="openModal('income')">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         </button>
@@ -129,16 +137,24 @@
                                 <div class="filter-option" data-filter="inactive"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg> תנועות לא פעילות</div>
                                 <div class="filter-option" data-filter="regular"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> קבועות</div>
                                 <div class="filter-option" data-filter="variable"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg> כרטיס אשראי</div>
-                                <div class="filter-option" data-filter="onetime"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> חד-פעמיות</div>
                                 <div class="filter-option" data-filter="loan"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="12" x2="18" y2="12"/></svg> הלוואות</div>
                             </div>
                         </div>
-                        <button class="sort-mode-btn" id="sortBtnExpense" onclick="toggleSortMode('expense')" title="סידור">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>
-                        </button>
+                        <div class="dropdown-container">
+                            <button class="sort-mode-btn" id="sortBtnExpense" onclick="toggleSortDropdown('expense')" title="מיון">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18"/><path d="M3 10h12"/><path d="M3 16h6"/></svg>
+                            </button>
+                            <div class="filter-dropdown" id="sortDropdownExpense"></div>
+                        </div>
                         <button class="chart-btn" onclick="showChart('expense')" title="הצג גרף">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
                         </button>
+                        <div class="dropdown-container">
+                            <button class="recurring-btn" id="recurringBtnExpense" onclick="toggleRecurringDropdown('expense')" title="טען תנועות קבועות">
+                               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+                            </button>
+                            <div class="recurring-dropdown" id="recurringDropdownExpense"></div>
+                        </div>
                         <button class="add-btn" onclick="openModal('expense')">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         </button>
@@ -284,11 +300,8 @@
             <div class="modal-header" id="modalTitle">הוספת תנועה</div>
             
             <div class="transaction-type-selector">
-                <div class="type-option selected" id="typeRegular" onclick="selectTransactionType('regular')">
-                    קבוע
-                </div>
-                <div class="type-option" id="typeOnetime" onclick="selectTransactionType('onetime')">
-                    חד-פעמי
+                <div class="type-option selected" id="typeOnetime" onclick="selectTransactionType('onetime')">
+                    כללי
                 </div>
                 <div class="type-option" id="typeVariable" onclick="selectTransactionType('variable')">
                     כרטיס אשראי
@@ -321,6 +334,18 @@
                         <label class="form-label">תשלום נוכחי</label>
                         <input type="number" class="form-input" id="loanCurrentInput" placeholder="0" min="0">
                     </div>
+                </div>
+            </div>
+
+            <div class="recurrence-group">
+                <label class="recurrence-label">
+                    <input type="checkbox" id="recurrenceCheckbox">
+                    <span>הפוך תנועה זו לקבועה</span>
+                </label>
+                <div class="day-of-month-group">
+                    <label for="recurrenceDayInput">חזור כל</label>
+                    <input type="number" id="recurrenceDayInput" class="form-input" min="1" max="31" placeholder="יום">
+                    <label>לחודש</label>
                 </div>
             </div>
 
@@ -395,8 +420,8 @@
                     <div class="modal-header" id="newMonthModalTitle">יצירת חודש חדש</div>
                     <p id="newMonthModalText" style="text-align: center; margin-bottom: 24px; color: var(--text-secondary);">בחר כיצד ליצור את החודש הבא.</p>
                     <div class="modal-actions" style="flex-direction: column;">
-                    <button class="modal-btn modal-btn-save" id="copyMonthBtn">העתק תנועות קבועות</button>
-                    <button class="modal-btn modal-btn-secondary" id="cleanMonthBtn">צור חודש ריק</button>
+                    <button class="modal-btn modal-btn-save" id="copyMonthBtn">התחל עם תנועות קבועות</button>
+                    <button class="modal-btn modal-btn-secondary" id="cleanMonthBtn">התחל עם חודש ריק</button>
                     <button class="modal-btn modal-btn-cancel" id="cancelNewMonthBtn">ביטול</button>
             </div>
         </div>
