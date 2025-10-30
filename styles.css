@@ -220,6 +220,17 @@ body.header-pinned .header {
     align-items: center;
 }
 
+.btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+.btn:hover,
+.control-btn-round:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
 .control-btn-round {
     width: 48px;
     height: 48px;
@@ -231,12 +242,6 @@ body.header-pinned .header {
     border: none;
     cursor: pointer;
     transition: all 0.3s;
-}
-
-.control-btn-round:hover,
-.btn-sync:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .btn-theme {
@@ -263,14 +268,16 @@ body.header-pinned .header {
     color: white;
 }
 
-.btn-undo:disabled {
+.btn-undo:disabled,
+.btn-delete-month:disabled {
     background: #e5e7eb;
     color: #9ca3af;
     cursor: not-allowed;
     opacity: 0.7;
 }
 
-.btn-undo:disabled:hover {
+.btn-undo:disabled:hover,
+.btn-delete-month:disabled:hover {
     transform: none;
     box-shadow: none;
 }
@@ -284,21 +291,6 @@ body.header-pinned .header {
     background: #ef4444;
     color: white;
 }
-
-.btn-delete-month:disabled {
-    background: #e5e7eb;
-    color: #9ca3af;
-    cursor: not-allowed;
-    opacity: 0.7;
-}
-
-.btn-delete-month:disabled:hover {
-    background: #e5e7eb;
-    color: #9ca3af;
-    transform: none;
-    box-shadow: none;
-}
-
 
 /* --- Sync Controls --- */
 .sync-wrapper {
@@ -1381,20 +1373,6 @@ body.header-pinned .header {
 .backup-controls .btn-delete-all-small:last-of-type:hover {
     background-color: #ef4444;
     color: white;
-}
-
-.backup-controls .btn-delete-all-small:disabled {
-    background: #e5e7eb;
-    color: #9ca3af;
-    border-color: #e5e7eb;
-    cursor: not-allowed;
-    opacity: 0.7;
-}
-
-.backup-controls .btn-delete-all-small:disabled:hover {
-    background: #e5e7eb;
-    color: #9ca3af;
-    border-color: #e5e7eb;
 }
 
 .btn-delete-all-small {

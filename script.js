@@ -251,7 +251,7 @@ function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
             }));
 
         allData[currentMonth].expenses = allData[prevMonthKey].expenses
-            .filter(t => t.type === 'regular' || t.type === 'loan')
+            .filter(t => t.type === 'regular' || (t.type === 'loan' && !t.completed))
             .map(t => ({ ...t,
                 id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 checked: true
@@ -713,7 +713,6 @@ function nextLoanPayment(event, type, id) {
         transaction.loanCurrent++;
         transaction.isExpanded = true;
         if (transaction.loanCurrent >= transaction.loanTotal) {
-            transaction.checked = false;
             transaction.completed = true;
         }
         saveDataToLocal();
