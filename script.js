@@ -23,12 +23,6 @@ let selectedTransactionType = 'regular';
 // ================================================
 // =========== פונקציית אבטחה (Sanitization) ===========
 // ================================================
-/**
- * מנקה מחרוזת טקסט כדי למנוע הזרקת HTML (XSS).
- * מחליפה תווים מיוחדים של HTML בתווים המקבילים הבטוחים להצגה.
- * @param {string} str - המחרוזת לניקוי.
- * @returns {string} המחרוזת המנוקה והבטוחה.
- */
 function sanitizeHTML(str) {
     if (!str) return "";
     const temp = document.createElement('div');
@@ -283,11 +277,11 @@ function closeNewMonthModal() {
 function navigateMonths(direction) {
     const existingMonths = Object.keys(allData).sort();
     const currentIndex = existingMonths.indexOf(currentMonth);
-    
+
     if (direction === 1) { // קדימה
         if (currentIndex < existingMonths.length - 1) {
             currentMonth = existingMonths[currentIndex + 1];
-            saveDataToLocal(); // <-- התיקון הקריטי
+            saveDataToLocal();
             loadData();
         } else {
             const [year, month] = currentMonth.split('-').map(Number);
@@ -298,25 +292,62 @@ function navigateMonths(direction) {
     } else if (direction === -1) { // אחורה
         if (currentIndex > 0) {
             currentMonth = existingMonths[currentIndex - 1];
-            saveDataToLocal(); // <-- התיקון הקריטי
+            saveDataToLocal();
             loadData();
         }
     }
 }
 
-function confirmDeleteMonth() {
-    if (Object.keys(allData).length <= 1) {
-        openConfirmModal('מידע', 'לא ניתן למחוק את החודש האחרון שנותר.', closeConfirmModal);
-        return;
-    }
-    const [year, month] = currentMonth.split('-');
-    const date = new Date(year, month - 1);
-    const monthName = date.toLocaleString('he-IL', {
-        month: 'long'
-    });
-    const message = `האם למחוק את כל הנתונים עבור חודש <b>${monthName} ${year}</b>?`;
+// --- לוגיקה חדשה לאיפוס ומחיקת חודש ---
+function openEditMonthModal() {
+    const existingMonths = Object.keys(allData).sort();
+    const currentIndex = existingMonths.indexOf(currentMonth);
+    const isLastMonth = currentIndex === existingMonths.length - 1;
 
-    openConfirmModal('אישור מחיקת חודש', message, deleteCurrentMonth);
+    const deleteBtn = document.getElementById('deleteMonthPermanentlyBtn');
+    if (isLastMonth) {
+        deleteBtn.classList.remove('hidden');
+    } else {
+        deleteBtn.classList.add('hidden');
+    }
+
+    document.getElementById('editMonthModal').classList.add('active');
+}
+
+function closeEditMonthModal() {
+    document.getElementById('editMonthModal').classList.remove('active');
+}
+
+function resetCurrentMonth() {
+    saveStateForUndo();
+    const monthData = allData[currentMonth];
+    monthData.income = [];
+    monthData.expenses = [];
+    
+    recalculateBalancesFrom(currentMonth);
+
+    closeEditMonthModal();
+    saveDataToLocal();
+    render();
+}
+
+function recalculateBalancesFrom(startMonthKey) {
+    const allMonthKeys = Object.keys(allData).sort();
+    const startIndex = allMonthKeys.indexOf(startMonthKey);
+
+    if (startIndex === -1) return;
+
+    for (let i = startIndex + 1; i < allMonthKeys.length; i++) {
+        const monthToUpdateKey = allMonthKeys[i];
+        const prevMonthKey = allMonthKeys[i - 1];
+        
+        const prevData = allData[prevMonthKey];
+        const prevBalance = prevData.balance || 0;
+        const prevIncome = prevData.income.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
+        const prevExpenses = prevData.expenses.filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
+        
+        allData[monthToUpdateKey].balance = Math.round(prevBalance + prevIncome - prevExpenses);
+    }
 }
 
 function deleteCurrentMonth() {
@@ -325,12 +356,17 @@ function deleteCurrentMonth() {
     const existingMonths = Object.keys(allData).sort();
     const currentIndex = existingMonths.indexOf(monthToDelete);
 
-    let newCurrentMonth = (currentIndex > 0) ? existingMonths[currentIndex - 1] : existingMonths[currentIndex + 1];
-
+    let newCurrentMonth = (currentIndex > 0) ? existingMonths[currentIndex - 1] : (existingMonths.length > 1 ? existingMonths[0] : getCurrentMonthKey());
+    
     delete allData[monthToDelete];
-    currentMonth = newCurrentMonth;
 
-    closeConfirmModal();
+    if (Object.keys(allData).length === 0) {
+        allData[newCurrentMonth] = { income: [], expenses: [], balance: 0 };
+    }
+
+    currentMonth = newCurrentMonth;
+    
+    closeEditMonthModal();
     saveDataToLocal();
     render();
 }
@@ -364,6 +400,7 @@ function jumpToCurrentMonth() {
         openNewMonthModal(todayMonthKey, lastMonthKey);
     }
 }
+
 
 function populateMonthJumper() {
     const jumperList = document.getElementById('monthJumperList');
@@ -1271,6 +1308,18 @@ function render() {
     updateBalanceIndicator();
     updateLoansSummary();
     updateSummary();
+
+    // הוספת לוגיקה להשבתת כפתורי מחיקה
+    const deleteAllBtn = document.querySelector('.backup-controls .btn-delete-all-small:last-of-type');
+    const deleteMonthBtn = document.getElementById('deleteMonthBtn');
+    const isDataEmpty = !currentData || (currentData.income.length === 0 && currentData.expenses.length === 0 && Object.keys(allData).length <= 1);
+
+    if (deleteAllBtn) {
+        deleteAllBtn.disabled = isDataEmpty;
+    }
+    if (deleteMonthBtn) {
+        deleteMonthBtn.disabled = isDataEmpty;
+    }
 }
 
 // ================================================
@@ -1285,7 +1334,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('prevMonthBtn').addEventListener('click', () => navigateMonths(-1));
     document.getElementById('nextMonthBtn').addEventListener('click', () => navigateMonths(1));
-    document.getElementById('deleteMonthBtn').addEventListener('click', confirmDeleteMonth);
+    document.getElementById('deleteMonthBtn').addEventListener('click', openEditMonthModal); // שונה
     document.getElementById('monthJumperBtn').addEventListener('click', toggleMonthJumper);
 
     document.getElementById('loadFromCloudBtn').addEventListener('click', handleLoadFromCloud);
@@ -1299,6 +1348,11 @@ document.addEventListener('DOMContentLoaded', () => {
         handleCreateNewMonth(newMonthModal.dataset.newMonthKey, newMonthModal.dataset.prevMonthKey, false);
     });
     document.getElementById('cancelNewMonthBtn').addEventListener('click', closeNewMonthModal);
+    
+    // חיבור כפתורים לחלון עריכת חודש
+    document.getElementById('resetMonthBtn').addEventListener('click', resetCurrentMonth);
+    document.getElementById('deleteMonthPermanentlyBtn').addEventListener('click', deleteCurrentMonth);
+    document.getElementById('cancelEditMonthBtn').addEventListener('click', closeEditMonthModal);
 
 
     document.querySelectorAll('#filterDropdownIncome .filter-option, #filterDropdownExpense .filter-option').forEach(option => {
@@ -1317,6 +1371,7 @@ document.addEventListener('DOMContentLoaded', () => {
             closeConfirmModal();
             closeApplyOptionsModal();
             closeNewMonthModal();
+            closeEditMonthModal();
         }
     });
 

@@ -220,14 +220,21 @@ body.header-pinned .header {
     align-items: center;
 }
 
-.btn svg {
-    width: 20px;
-    height: 20px;
+.control-btn-round {
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
 }
 
-.btn:hover,
-.btn-theme:hover,
-.btn-pin:hover {
+.control-btn-round:hover,
+.btn-sync:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
@@ -235,39 +242,18 @@ body.header-pinned .header {
 .btn-theme {
     background: #8b5cf6;
     color: white;
-    width: 48px;
-    height: 48px;
-    padding: 0;
-    border-radius: 50%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    border: none;
-    cursor: pointer;
-    transition: all 0.3s;
 }
 
 .btn-pin {
     background: #64748b;
     color: white;
-    width: 48px;
-    height: 48px;
-    padding: 0;
-    border-radius: 50%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    border: none;
-    cursor: pointer;
-    transition: all 0.3s;
 }
 
 .btn-pin svg {
     transition: transform 0.3s ease;
 }
 
-.btn-pin.active svg,
-.action-btn.pin-btn.active svg {
+.btn-pin.active svg {
     fill: currentColor;
     transform: scale(1.05);
 }
@@ -275,13 +261,6 @@ body.header-pinned .header {
 .btn-undo {
     background: #60a5fa;
     color: white;
-    width: 48px;
-    height: 48px;
-    padding: 0;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
 .btn-undo:disabled {
@@ -299,22 +278,27 @@ body.header-pinned .header {
 .btn-delete-month {
     background: #fee2e2;
     color: #ef4444;
-    width: 48px;
-    height: 48px;
-    padding: 0;
-    border-radius: 50%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    border: none;
-    cursor: pointer;
-    transition: all 0.3s;
 }
 
 .btn-delete-month:hover {
     background: #ef4444;
     color: white;
 }
+
+.btn-delete-month:disabled {
+    background: #e5e7eb;
+    color: #9ca3af;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.btn-delete-month:disabled:hover {
+    background: #e5e7eb;
+    color: #9ca3af;
+    transform: none;
+    box-shadow: none;
+}
+
 
 /* --- Sync Controls --- */
 .sync-wrapper {
@@ -1399,6 +1383,20 @@ body.header-pinned .header {
     color: white;
 }
 
+.backup-controls .btn-delete-all-small:disabled {
+    background: #e5e7eb;
+    color: #9ca3af;
+    border-color: #e5e7eb;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.backup-controls .btn-delete-all-small:disabled:hover {
+    background: #e5e7eb;
+    color: #9ca3af;
+    border-color: #e5e7eb;
+}
+
 .btn-delete-all-small {
     padding: 8px 16px;
     background: #ef4444;
@@ -1885,4 +1883,19 @@ input[type="file"] {
     cursor: default;
     background-color: transparent;
     color: var(--header-text-color);
+}
+
+.modal-btn-danger {
+    background-color: #fee2e2;
+    color: #ef4444;
+    border: 2px solid #fca5a5;
+}
+
+.modal-btn-danger:hover {
+    background-color: #ef4444;
+    color: white;
+}
+
+.hidden {
+    display: none;
 }
