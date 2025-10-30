@@ -2016,3 +2016,23 @@ input[type="file"] {
 .sort-buttons.visible ~ .transaction-actions .transaction-date-note {
     display: none;
 }
+
+/* --- שיפורי עיצוב לתנועות קבועות --- */
+
+/* עיצוב טקסט התאריך, שעכשיו מכיל גם את האייקון */
+.transaction-date-note {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* עיצוב האייקון, עכשיו כשהוא חלק מהטקסט */
+.transaction-date-note .recurrence-icon {
+    width: 14px;
+    height: 14px;
+    color: var(--text-secondary);
+    opacity: 0.7;
+}

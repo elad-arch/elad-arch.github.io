@@ -645,7 +645,6 @@ function populateSortDropdown(type) {
     }).join('');
 }
 
-// === התיקון: הוספת שמירת הגדרות המיון ===
 function setSortMode(type, mode) {
     const settings = sortSettings[type];
     if (mode === 'manual') {
@@ -660,12 +659,11 @@ function setSortMode(type, mode) {
             settings.direction = 'asc';
         }
     }
-    localStorage.setItem('sortSettings', JSON.stringify(sortSettings)); // שמירה בזיכרון
+    localStorage.setItem('sortSettings', JSON.stringify(sortSettings));
     document.querySelectorAll('.filter-dropdown').forEach(d => d.classList.remove('active'));
     render();
 }
 
-// === התיקון: הוספת פונקציה לטעינת הגדרות המיון ===
 function loadSortSettings() {
     const savedSortSettings = localStorage.getItem('sortSettings');
     if (savedSortSettings) {
@@ -1122,7 +1120,7 @@ function render() {
         else if (filterIncome === 'regular') filteredIncome = filteredIncome.filter(t => t.recurrence?.isRecurring);
         else filteredIncome = filteredIncome.filter(t => t.type === filterIncome);
     }
-    
+
     const incomeSort = sortSettings.income;
     if (incomeSort.mode === 'alpha') filteredIncome.sort((a, b) => a.description.localeCompare(b.description, 'he'));
     else if (incomeSort.mode === 'amount') filteredIncome.sort((a, b) => incomeSort.direction === 'asc' ? a.amount - b.amount : b.amount - a.amount);
@@ -1135,15 +1133,17 @@ function render() {
         const badgeText = isRecurring ? 'קבוע' : '';
         const recurrenceIcon = isRecurring ? `<svg class="recurrence-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>` : '';
         const originalIndex = currentData.income.findIndex(item => item.id === t.id);
-        
+
+        const dateNote = isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">מתקבל ב-${t.recurrence.dayOfMonth} לחודש ${recurrenceIcon}</div>` : '';
+
         return `
             <div class="transaction-wrapper">
                 <div class="transaction-item ${!t.checked ? 'inactive' : ''}">
                     <div class="transaction-info">
                         <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'income', '${t.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
                         <div class="transaction-details">
-                            ${isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">מתקבל ב-${t.recurrence.dayOfMonth} לחודש</div>` : ''}
-                            <div class="transaction-text">${recurrenceIcon} ${sanitizeHTML(t.description)} ${badgeText ? `<span class="transaction-badge ${badgeClass}">${badgeText}</span>` : ''}</div>
+                            <div class="transaction-text">${sanitizeHTML(t.description)} ${badgeText ? `<span class="transaction-badge ${badgeClass}">${badgeText}</span>` : ''}</div>
+                            ${dateNote}
                         </div>
                     </div>
                     <div class="transaction-amount" onclick="editAmount(event, 'income', '${t.id}')">
@@ -1198,6 +1198,8 @@ function render() {
 
         const recurrenceIcon = isRecurring ? `<svg class="recurrence-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>` : '';
         const loanDetails = (t.type === 'loan' && t.originalLoanAmount) ? `<div class="loan-original-amount">סכום הלוואה: ₪${t.originalLoanAmount.toLocaleString('he-IL')}</div>` : '';
+        const dateNote = isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">יורד ב-${t.recurrence.dayOfMonth} לחודש ${recurrenceIcon}</div>` : '';
+
         let progressBar = '';
         if (t.type === 'loan' && t.loanTotal) {
             const percentage = (t.loanCurrent / t.loanTotal) * 100;
@@ -1218,8 +1220,8 @@ function render() {
                 <div class="transaction-info">
                     <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'expense', '${t.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
                     <div class="transaction-details">
-                        ${isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">יורד ב-${t.recurrence.dayOfMonth} לחודש</div>` : ''}
-                        <div class="transaction-text">${recurrenceIcon} ${sanitizeHTML(t.description)} ${badgeText ? `<span class="transaction-badge ${badgeClass}">${badgeText}</span>` : ''}</div>
+                        <div class="transaction-text">${sanitizeHTML(t.description)} ${badgeText ? `<span class="transaction-badge ${badgeClass}">${badgeText}</span>` : ''}</div>
+                        ${dateNote}
                         ${loanDetails}
                     </div>
                 </div>
@@ -1409,10 +1411,10 @@ function addRecurringTransaction(type, description) {
 document.addEventListener('DOMContentLoaded', () => {
     loadTheme();
     loadHeaderPinState();
+    loadSortSettings(); 
     loadData();
     loadCardStates();
     setupBalanceControls();
-    loadSortSettings(); // === התיקון: קריאה לפונקציה החדשה בטעינת האפליקציה ===
     
     document.getElementById('prevMonthBtn').addEventListener('click', () => navigateMonths(-1));
     document.getElementById('nextMonthBtn').addEventListener('click', () => navigateMonths(1));
