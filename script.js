@@ -17,6 +17,7 @@ let filterIncome = 'all';
 let filterExpense = 'all';
 let previousState = null;
 let selectedTransactionType = 'onetime';
+let currentTransactionTags = []; // State for tags in the modal
 let sortSettings = {
     income: { mode: 'manual', direction: 'asc' },
     expense: { mode: 'manual', direction: 'asc' }
@@ -78,7 +79,8 @@ async function loadFromCloud(password) {
         const decryptedData = decryptData(cloudData.record.data, password);
         if (decryptedData) {
             allData = decryptedData;
-            currentMonth = Object.keys(allData).sort().pop() || getCurrentMonthKey();
+            initializeTags(); // Ensure tags object exists after loading
+            currentMonth = Object.keys(allData).filter(k => k !== 'tags').sort().pop() || getCurrentMonthKey();
             saveDataToLocal();
             loadData();
             return 'success';
@@ -161,11 +163,66 @@ async function handleSaveToCloud() {
 }
 
 // ================================================
+// =========== פונקציות ניהול תגים (חדש) ===========
+// ================================================
+function initializeTags() {
+    if (!allData.tags) {
+        allData.tags = {};
+    }
+}
+
+function generateTagColor(tagName) {
+    let hash = 0;
+    for (let i = 0; i < tagName.length; i++) {
+        hash = tagName.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    let color = '#';
+    for (let i = 0; i < 3; i++) {
+        let value = (hash >> (i * 8)) & 0xFF;
+        color += ('00' + value.toString(16)).substr(-2);
+    }
+    return color;
+}
+
+function createTag(name) {
+    const tagName = name.trim();
+    if (!tagName) return null;
+
+    // Check if tag with this name already exists
+    const existingTag = Object.values(allData.tags).find(t => t.name.toLowerCase() === tagName.toLowerCase());
+    if (existingTag) {
+        return existingTag;
+    }
+
+    const id = `tag-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newTag = {
+        id: id,
+        name: tagName,
+        color: generateTagColor(tagName)
+    };
+    allData.tags[id] = newTag;
+    return newTag;
+}
+
+function getTagById(id) {
+    return allData.tags[id];
+}
+
+function getAllTags() {
+    return Object.values(allData.tags || {}).sort((a, b) => a.name.localeCompare(b.name, 'he'));
+}
+
+
+// ================================================
 // =========== פונקציות ניהול חודשים ===========
 // ================================================
 function getCurrentMonthKey() {
     const now = new Date();
     return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+}
+
+function getExistingMonths() {
+    return Object.keys(allData).filter(key => key !== 'tags').sort();
 }
 
 function updateMonthDisplay() {
@@ -193,15 +250,15 @@ function updateMonthDisplay() {
 function updateNavButtons() {
     const prevMonthBtn = document.getElementById('prevMonthBtn');
     const nextMonthBtn = document.getElementById('nextMonthBtn');
-    const existingMonths = Object.keys(allData).sort();
+    const existingMonths = getExistingMonths();
     const currentIndex = existingMonths.indexOf(currentMonth);
     prevMonthBtn.disabled = (currentIndex === 0);
     const isLastMonth = (currentIndex === existingMonths.length - 1);
     if (isLastMonth) {
-        nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+        nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
         nextMonthBtn.title = "צור חודש חדש";
     } else {
-        nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+        nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
         nextMonthBtn.title = "החודש הבא";
     }
 }
@@ -220,7 +277,7 @@ function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
     if (shouldCopy) {
         const recurringIncomes = new Map();
         const recurringExpenses = new Map();
-        const allMonthKeys = Object.keys(allData).sort();
+        const allMonthKeys = getExistingMonths();
         allMonthKeys.forEach(monthKey => {
             if (monthKey === currentMonth) return;
             const monthData = allData[monthKey];
@@ -265,7 +322,7 @@ function closeNewMonthModal() {
 }
 
 function navigateMonths(direction) {
-    const existingMonths = Object.keys(allData).sort();
+    const existingMonths = getExistingMonths();
     const currentIndex = existingMonths.indexOf(currentMonth);
     if (direction === 1) {
         if (currentIndex < existingMonths.length - 1) {
@@ -288,7 +345,7 @@ function navigateMonths(direction) {
 }
 
 function openEditMonthModal() {
-    const existingMonths = Object.keys(allData).sort();
+    const existingMonths = getExistingMonths();
     const currentIndex = existingMonths.indexOf(currentMonth);
     const isLastMonth = currentIndex === existingMonths.length - 1;
     const deleteBtn = document.getElementById('deleteMonthPermanentlyBtn');
@@ -316,7 +373,7 @@ function resetCurrentMonth() {
 }
 
 function recalculateBalancesFrom(startMonthKey) {
-    const allMonthKeys = Object.keys(allData).sort();
+    const allMonthKeys = getExistingMonths();
     const startIndex = allMonthKeys.indexOf(startMonthKey);
     if (startIndex === -1) return;
     for (let i = startIndex + 1; i < allMonthKeys.length; i++) {
@@ -333,11 +390,11 @@ function recalculateBalancesFrom(startMonthKey) {
 function deleteCurrentMonth() {
     saveStateForUndo();
     const monthToDelete = currentMonth;
-    const existingMonths = Object.keys(allData).sort();
+    const existingMonths = getExistingMonths();
     const currentIndex = existingMonths.indexOf(monthToDelete);
     let newCurrentMonth = (currentIndex > 0) ? existingMonths[currentIndex - 1] : (existingMonths.length > 1 ? existingMonths[0] : getCurrentMonthKey());
     delete allData[monthToDelete];
-    if (Object.keys(allData).length === 0) {
+    if (Object.keys(allData).length === 1 && allData.tags) { // Only tags object left
         allData[newCurrentMonth] = { income: [], expenses: [], balance: 0 };
     }
     currentMonth = newCurrentMonth;
@@ -369,7 +426,7 @@ function jumpToCurrentMonth() {
         saveDataToLocal();
         loadData();
     } else {
-        const existingMonths = Object.keys(allData).sort();
+        const existingMonths = getExistingMonths();
         const lastMonthKey = existingMonths[existingMonths.length - 1];
         openNewMonthModal(todayMonthKey, lastMonthKey);
     }
@@ -378,7 +435,7 @@ function jumpToCurrentMonth() {
 function populateMonthJumper() {
     const jumperList = document.getElementById('monthJumperList');
     if (!jumperList) return;
-    const months = Object.keys(allData).sort((a, b) => b.localeCompare(a));
+    const months = getExistingMonths().sort((a, b) => b.localeCompare(a));
     jumperList.innerHTML = '';
     months.forEach(monthKey => {
         const [year, month] = monthKey.split('-');
@@ -410,6 +467,8 @@ function loadData() {
     const savedData = localStorage.getItem('budgetData');
     allData = savedData ? JSON.parse(savedData) : {};
     
+    initializeTags(); // Ensure tags object exists
+
     currentMonth = localStorage.getItem('currentMonth') || getCurrentMonthKey();
 
     if (!allData[currentMonth]) {
@@ -551,7 +610,7 @@ function updateSummary() {
 
 function updateLoansSummary() {
     const latestLoansMap = new Map();
-    const allMonthKeys = Object.keys(allData).sort();
+    const allMonthKeys = getExistingMonths();
     allMonthKeys.forEach(monthKey => {
         const monthData = allData[monthKey];
         if (monthData && monthData.expenses) {
@@ -753,7 +812,8 @@ function importData(event) {
                 openConfirmModal('אישור ייבוא נתונים', 'האם לייבא את הנתונים? הנתונים הנוכחיים יוחלפו.', () => {
                     saveStateForUndo();
                     allData = imported;
-                    currentMonth = Object.keys(allData).sort().pop() || getCurrentMonthKey();
+                    initializeTags(); // Ensure tags object exists after import
+                    currentMonth = getExistingMonths().pop() || getCurrentMonthKey();
                     saveDataToLocal();
                     loadData();
                     closeConfirmModal();
@@ -828,13 +888,14 @@ function closeChartModal() {
 }
 
 function deleteAllData() {
-    if (Object.keys(allData).length === 0) return;
+    if (Object.keys(allData).length === 1 && allData.tags) return;
     const message = `אתה עומד למחוק את <b>כל הנתונים מכל החודשים</b> לצמיתות. האם להמשיך?`;
     openConfirmModal('אישור מחיקת כל הנתונים', message, () => {
         saveStateForUndo();
         allData = {};
         currentMonth = getCurrentMonthKey();
         allData[currentMonth] = { income: [], expenses: [], balance: 0 };
+        initializeTags();
         document.getElementById('currentBalanceInput').value = 0;
         saveDataToLocal();
         render();
@@ -858,6 +919,10 @@ function openModal(type, id = null) {
     [descriptionInput, amountInput, recurrenceDayInput].forEach(input => input.value = '');
     recurrenceCheckbox.checked = false;
     document.querySelector('.day-of-month-group').style.display = 'none';
+    
+    // Reset tags
+    currentTransactionTags = [];
+    renderSelectedTags();
 
     if (id) {
         const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
@@ -884,6 +949,11 @@ function openModal(type, id = null) {
             document.querySelector('.day-of-month-group').style.display = 'flex';
         }
 
+        if (transaction.tags && Array.isArray(transaction.tags)) {
+            currentTransactionTags = transaction.tags.map(tagId => getTagById(tagId)).filter(Boolean);
+            renderSelectedTags();
+        }
+
     } else {
         title.textContent = type === 'income' ? 'הוספת הכנסה' : 'הוספת הוצאה';
         ['loanOriginalAmountInput', 'loanTotalInput', 'loanCurrentInput'].forEach(id => document.getElementById(id).value = '');
@@ -897,6 +967,7 @@ function openModal(type, id = null) {
 function closeModal() {
     document.getElementById('transactionModal').classList.remove('active');
     editingId = null;
+    currentTransactionTags = []; // Clear tags on close
 }
 
 function saveTransaction() {
@@ -923,7 +994,8 @@ function saveTransaction() {
         recurrence: {
             isRecurring: isRecurring,
             dayOfMonth: isRecurring ? dayOfMonth : null
-        }
+        },
+        tags: currentTransactionTags.map(tag => tag.id) // Save tag IDs
     };
     
     if (transactionData.type === 'regular') {
@@ -1135,6 +1207,12 @@ function render() {
         const originalIndex = currentData.income.findIndex(item => item.id === t.id);
 
         const dateNote = isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">מתקבל ב-${t.recurrence.dayOfMonth} לחודש ${recurrenceIcon}</div>` : '';
+        
+        const tagsHTML = (t.tags || []).map(tagId => {
+            const tag = getTagById(tagId);
+            if (!tag) return '';
+            return `<span class="transaction-tag" style="background-color: ${tag.color};">${sanitizeHTML(tag.name)}</span>`;
+        }).join('');
 
         return `
             <div class="transaction-wrapper">
@@ -1143,6 +1221,7 @@ function render() {
                         <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'income', '${t.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
                         <div class="transaction-details">
                             <div class="transaction-text">${sanitizeHTML(t.description)} ${badgeText ? `<span class="transaction-badge ${badgeClass}">${badgeText}</span>` : ''}</div>
+                            <div class="transaction-tags-container">${tagsHTML}</div>
                             ${dateNote}
                         </div>
                     </div>
@@ -1199,6 +1278,12 @@ function render() {
         const recurrenceIcon = isRecurring ? `<svg class="recurrence-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>` : '';
         const loanDetails = (t.type === 'loan' && t.originalLoanAmount) ? `<div class="loan-original-amount">סכום הלוואה: ₪${t.originalLoanAmount.toLocaleString('he-IL')}</div>` : '';
         const dateNote = isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">יורד ב-${t.recurrence.dayOfMonth} לחודש ${recurrenceIcon}</div>` : '';
+        
+        const tagsHTML = (t.tags || []).map(tagId => {
+            const tag = getTagById(tagId);
+            if (!tag) return '';
+            return `<span class="transaction-tag" style="background-color: ${tag.color};">${sanitizeHTML(tag.name)}</span>`;
+        }).join('');
 
         let progressBar = '';
         if (t.type === 'loan' && t.loanTotal) {
@@ -1221,6 +1306,7 @@ function render() {
                     <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'expense', '${t.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
                     <div class="transaction-details">
                         <div class="transaction-text">${sanitizeHTML(t.description)} ${badgeText ? `<span class="transaction-badge ${badgeClass}">${badgeText}</span>` : ''}</div>
+                        <div class="transaction-tags-container">${tagsHTML}</div>
                         ${dateNote}
                         ${loanDetails}
                     </div>
@@ -1267,7 +1353,7 @@ function render() {
 
     document.getElementById('incomeCollapsedSummary').innerHTML = `<span class="summary-label">סה״כ הכנסות:</span> <span class="summary-value">₪${totalActiveIncome.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
     document.getElementById('expenseCollapsedSummary').innerHTML = `<span class="summary-label">סה״כ הוצאות:</span> <span class="summary-value">₪${totalActiveExpenses.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
-    document.getElementById('summaryCollapsedSummary').innerHTML = `<span class="summary-label">עו"ש צפוי:</span> <span class="summary-value ${finalBalance >= 0 ? 'positive' : 'negative'}">₪${finalBalance.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
+    document.getElementById('summaryCollapsedSummary').innerHTML = `<span class="summary-label">עו"ш צפוי:</span> <span class="summary-value ${finalBalance >= 0 ? 'positive' : 'negative'}">₪${finalBalance.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
     document.getElementById('incomeTotal').textContent = '₪' + incomeTotal.toLocaleString('he-IL', { minimumFractionDigits: 2 });
     document.getElementById('expenseTotal').textContent = '₪' + expenseTotal.toLocaleString('he-IL', { minimumFractionDigits: 2 });
 
@@ -1287,7 +1373,7 @@ function render() {
     updateSummary();
     const deleteAllBtn = document.querySelector('.backup-controls .btn-delete-all-small:last-of-type');
     const deleteMonthBtn = document.getElementById('deleteMonthBtn');
-    const isDataEmpty = !currentData || ((currentData.income || []).length === 0 && (currentData.expenses || []).length === 0 && Object.keys(allData).length <= 1);
+    const isDataEmpty = !currentData || ((currentData.income || []).length === 0 && (currentData.expenses || []).length === 0 && getExistingMonths().length <= 1);
     if (deleteAllBtn) deleteAllBtn.disabled = isDataEmpty;
     if (deleteMonthBtn) deleteMonthBtn.disabled = isDataEmpty;
 }
@@ -1314,7 +1400,7 @@ function populateRecurringDropdown(type) {
     const dropdownId = type === 'income' ? 'recurringDropdownIncome' : 'recurringDropdownExpense';
     const dropdown = document.getElementById(dropdownId);
     allRecurringTransactions.clear();
-    const allMonthKeys = Object.keys(allData).sort();
+    const allMonthKeys = getExistingMonths();
     allMonthKeys.forEach(monthKey => {
         const monthData = allData[monthKey];
         const list = type === 'income' ? (monthData.income || []) : (monthData.expenses || []);
@@ -1415,6 +1501,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadData();
     loadCardStates();
     setupBalanceControls();
+    setupTagsInputEventListeners(); // New
     
     document.getElementById('prevMonthBtn').addEventListener('click', () => navigateMonths(-1));
     document.getElementById('nextMonthBtn').addEventListener('click', () => navigateMonths(1));
@@ -1452,6 +1539,7 @@ document.addEventListener('DOMContentLoaded', () => {
             closeApplyOptionsModal();
             closeNewMonthModal();
             closeEditMonthModal();
+            closeTagsManagementModal();
         }
     });
     document.addEventListener('click', (e) => {
@@ -1542,4 +1630,173 @@ function loadHeaderPinState() {
         document.body.classList.add('header-pinned');
         document.getElementById('pinHeaderBtn').classList.add('active');
     }
+}
+
+
+// =======================================================
+// =========== לוגיקה חדשה - ניהול קלט תגים ===========
+// =======================================================
+
+function setupTagsInputEventListeners() {
+    const tagsInput = document.getElementById('tagsInput');
+    const suggestionsContainer = document.getElementById('tagsSuggestions');
+
+    tagsInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const tagName = tagsInput.value.trim();
+            if (tagName) {
+                let tag = Object.values(allData.tags).find(t => t.name.toLowerCase() === tagName.toLowerCase());
+                if (!tag) {
+                    tag = createTag(tagName);
+                }
+                addTagToTransaction(tag);
+                tagsInput.value = '';
+                suggestionsContainer.innerHTML = '';
+                suggestionsContainer.classList.remove('active');
+            }
+        }
+    });
+
+    tagsInput.addEventListener('keyup', () => {
+        const query = tagsInput.value.toLowerCase();
+        if (!query) {
+            suggestionsContainer.innerHTML = '';
+            suggestionsContainer.classList.remove('active');
+            return;
+        }
+        const allTags = getAllTags();
+        const filteredTags = allTags.filter(tag => tag.name.toLowerCase().includes(query));
+        
+        suggestionsContainer.innerHTML = '';
+        if(filteredTags.length > 0) {
+            filteredTags.forEach(tag => {
+                const suggestionEl = document.createElement('div');
+                suggestionEl.textContent = tag.name;
+                suggestionEl.onclick = () => {
+                    addTagToTransaction(tag);
+                    tagsInput.value = '';
+                    suggestionsContainer.innerHTML = '';
+                    suggestionsContainer.classList.remove('active');
+                };
+                suggestionsContainer.appendChild(suggestionEl);
+            });
+            suggestionsContainer.classList.add('active');
+        } else {
+            suggestionsContainer.classList.remove('active');
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.tags-input-wrapper')) {
+            suggestionsContainer.classList.remove('active');
+        }
+    });
+}
+
+function renderSelectedTags() {
+    const tagsContainer = document.getElementById('tagsContainer');
+    tagsContainer.innerHTML = '';
+    currentTransactionTags.forEach(tag => {
+        const tagEl = document.createElement('span');
+        tagEl.className = 'selected-tag';
+        tagEl.style.backgroundColor = tag.color;
+        tagEl.innerHTML = `
+            ${sanitizeHTML(tag.name)}
+            <button type="button" class="remove-tag-btn" onclick="removeTagFromTransaction('${tag.id}')">&times;</button>
+        `;
+        tagsContainer.appendChild(tagEl);
+    });
+}
+
+function addTagToTransaction(tag) {
+    if (!tag || currentTransactionTags.some(t => t.id === tag.id)) {
+        return; // Do not add if null or already exists
+    }
+    currentTransactionTags.push(tag);
+    renderSelectedTags();
+}
+
+function removeTagFromTransaction(tagId) {
+    currentTransactionTags = currentTransactionTags.filter(t => t.id !== tagId);
+    renderSelectedTags();
+}
+
+// =======================================================
+// =========== לוגיקה חדשה - חלון ניהול תגים ===========
+// =======================================================
+
+function openTagsManagementModal() {
+    const listContainer = document.getElementById('tagsManagementList');
+    listContainer.innerHTML = '';
+    const allTags = getAllTags();
+
+    if(allTags.length === 0) {
+        listContainer.innerHTML = `<div class="empty-state">אין תגים להצגה. התחל להוסיף תגים לתנועות שלך!</div>`;
+    } else {
+        allTags.forEach(tag => {
+            const tagItem = document.createElement('div');
+            tagItem.className = 'tag-management-item';
+            tagItem.innerHTML = `
+                <span class="tag-preview" style="background-color: ${tag.color};"></span>
+                <span class="tag-name">${sanitizeHTML(tag.name)}</span>
+                <div class="tag-actions">
+                    <button class="action-btn edit" onclick="editTag('${tag.id}')" title="שנה שם"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+                    <button class="action-btn delete" onclick="deleteTag('${tag.id}')" title="מחק תג"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+                </div>
+            `;
+            listContainer.appendChild(tagItem);
+        });
+    }
+
+    document.getElementById('tagsManagementModal').classList.add('active');
+}
+
+function closeTagsManagementModal() {
+    document.getElementById('tagsManagementModal').classList.remove('active');
+}
+
+function editTag(tagId) {
+    const tag = getTagById(tagId);
+    if (!tag) return;
+
+    const newName = prompt(`שנה את שם התג "${tag.name}":`, tag.name);
+    if (newName && newName.trim() !== tag.name) {
+        saveStateForUndo();
+        allData.tags[tagId].name = newName.trim();
+        saveDataToLocal();
+        render(); // Re-render main view
+        openTagsManagementModal(); // Re-render the modal
+    }
+}
+
+function deleteTag(tagId) {
+    const tag = getTagById(tagId);
+    if (!tag) return;
+    
+    const message = `האם למחוק את התג <b>"${sanitizeHTML(tag.name)}"</b> לצמיתות? <br>התג יוסר מכל התנועות בכל החודשים.`;
+    openConfirmModal('אישור מחיקת תג', message, () => {
+        saveStateForUndo();
+        // 1. Delete the tag from the global list
+        delete allData.tags[tagId];
+
+        // 2. Remove the tagId from all transactions across all months
+        getExistingMonths().forEach(monthKey => {
+            const monthData = allData[monthKey];
+            ['income', 'expenses'].forEach(type => {
+                if (monthData[type]) {
+                    monthData[type].forEach(transaction => {
+                        if (transaction.tags && transaction.tags.includes(tagId)) {
+                            transaction.tags = transaction.tags.filter(id => id !== tagId);
+                        }
+                    });
+                }
+            });
+        });
+
+        saveDataToLocal();
+        render(); // Re-render main view
+        closeConfirmModal();
+        openTagsManagementModal(); // Re-render the modal
+    });
 }
