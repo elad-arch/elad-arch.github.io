@@ -643,6 +643,7 @@ body.header-pinned .header {
     gap: 12px;
     flex: 1;
     min-width: 150px;
+    overflow: hidden; /* Added to contain tags */
 }
 
 .transaction-check {
@@ -687,6 +688,7 @@ body.header-pinned .header {
     flex-direction: column;
     gap: 4px;
     flex-grow: 1;
+    overflow: hidden; /* Added */
 }
 
 .transaction-text {
@@ -696,82 +698,40 @@ body.header-pinned .header {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap; /* Allow icons to wrap if needed */
 }
 
-.recurrence-icon {
+.transaction-text span {
+    white-space: nowrap;
+}
+
+.transaction-icons {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 2px; /* Small space from text */
+}
+
+.system-icon {
     width: 16px;
     height: 16px;
     color: var(--text-secondary);
-    flex-shrink: 0;
+    opacity: 0.8;
 }
 
-.transaction-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 10px;
-    border-radius: 9999px;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1;
-}
-
-.badge-regular {
-    background: #ccfbf1;
-    color: #134e4a;
-}
-
-.badge-onetime {
-    background: #e0e7ff;
-    color: #3730a3;
-}
-
-.badge-loan {
-    background: #fee2e2;
-    color: #991b1b;
-}
-
-.badge-loan.completed {
-    background: #dcfce7;
-    color: #166534;
-    font-weight: 700;
-}
-
-[data-theme="dark"] .badge-loan.completed {
-    background: #14532d;
-    color: #a7f3d0;
-}
-
-.badge-variable {
-    background: #fef9c3;
-    color: #854d0e;
-}
-
-[data-theme="dark"] .badge-variable {
-    background: #422c0b;
-    color: #fef9c3;
-}
-
-.transaction-badge svg.credit-card-icon {
-    margin-left: -2px;
-    margin-right: 4px;
-    vertical-align: -2px;
-}
-
-.credit-card-icon {
-    color: #854d0e;
-    flex-shrink: 0;
-}
-
-[data-theme="dark"] .credit-card-icon {
-    color: #fef9c3;
+.system-icon.icon-loan.completed {
+    color: #10b981;
+    opacity: 1;
 }
 
 /* New Tags Styles */
 .transaction-tags-container {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap; /* Do not wrap tags */
+    overflow: hidden; /* Hide overflowing tags */
     gap: 6px;
     margin-top: 6px;
+    align-items: center;
 }
 
 .transaction-tag {
@@ -781,6 +741,25 @@ body.header-pinned .header {
     font-weight: 600;
     color: white;
     text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    flex-shrink: 0; /* Prevent tags from shrinking */
+}
+
+.tag-overflow-btn {
+    background: var(--item-hover);
+    border: none;
+    border-radius: 9999px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.tag-overflow-btn:hover {
+    background: #667eea;
+    color: white;
 }
 
 .transaction-amount {
@@ -1430,13 +1409,18 @@ input[type="file"] {
     width: 100%;
     height: 100%;
     background: var(--modal-overlay);
-    z-index: 1000;
+    z-index: 1000; /* Base z-index for all modals */
     align-items: center;
     justify-content: center;
 }
 
 .modal.active {
     display: flex;
+}
+
+/* Ensure confirm modal is always on top */
+#confirmModal {
+    z-index: 1050; 
 }
 
 .modal-content {
@@ -1678,6 +1662,29 @@ input[type="file"] {
     display: flex;
     gap: 8px;
 }
+
+/* --- Tags Overflow Modal --- */
+.modal-content-small {
+    max-width: 350px;
+    padding: 24px;
+}
+
+.tags-overflow-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+.tag-overflow-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    background: var(--item-bg);
+    border-radius: 8px;
+}
+
 
 .loan-fields {
     display: none;
@@ -2158,7 +2165,7 @@ input[type="file"] {
 
 /* --- שיפורי עיצוב לתנועות קבועות --- */
 
-/* עיצוב טקסט התאריך, שעכשיו מכיל גם את האייקון */
+/* עיצוב טקסט התאריך */
 .transaction-date-note {
     font-size: 12px;
     color: var(--text-secondary);
@@ -2168,10 +2175,7 @@ input[type="file"] {
     gap: 6px;
 }
 
-/* עיצוב האייקון, עכשיו כשהוא חלק מהטקסט */
+/* הסרת העיצוב של האייקון הכפול */
 .transaction-date-note .recurrence-icon {
-    width: 14px;
-    height: 14px;
-    color: var(--text-secondary);
-    opacity: 0.7;
+   display: none;
 }

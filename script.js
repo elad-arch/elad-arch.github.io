@@ -78,7 +78,7 @@ async function loadFromCloud(password) {
         }
         const decryptedData = decryptData(cloudData.record.data, password);
         if (decryptedData) {
-            allData = decryptedData;
+            allData = migrateData(decryptedData); // <<< תיקון
             initializeTags(); // Ensure tags object exists after loading
             currentMonth = Object.keys(allData).filter(k => k !== 'tags').sort().pop() || getCurrentMonthKey();
             saveDataToLocal();
@@ -255,10 +255,10 @@ function updateNavButtons() {
     prevMonthBtn.disabled = (currentIndex === 0);
     const isLastMonth = (currentIndex === existingMonths.length - 1);
     if (isLastMonth) {
-        nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+        nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
         nextMonthBtn.title = "צור חודש חדש";
     } else {
-        nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+        nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
         nextMonthBtn.title = "החודש הבא";
     }
 }
@@ -455,6 +455,38 @@ function populateMonthJumper() {
 // ================================================
 // =========== פונקציות שמירה וטעינה ===========
 // ================================================
+
+/**
+ * פונקציית עזר לתיקון נתונים ישנים (Migration)
+ * רצה על כל הנתונים ומוודאת שכל תנועה מכילה אובייקט 'recurrence' תקין
+ */
+function migrateData(data) {
+    if (!data) return {};
+    Object.keys(data).forEach(key => {
+        if (key === 'tags' || !data[key]) return; // דלג על מפתח התגים
+
+        ['income', 'expenses'].forEach(type => {
+            if (data[key][type] && Array.isArray(data[key][type])) {
+                data[key][type].forEach(t => {
+                    // 1. אם אובייקט 'recurrence' חסר לגמרי, ניצור ברירת מחדל
+                    if (!t.recurrence) {
+                        t.recurrence = { isRecurring: false, dayOfMonth: null };
+                    }
+                    
+                    // 2. זה התיקון הקריטי לנתונים ישנים:
+                    // אם תנועה סומנה כקבועה אבל היום שלה הוא null (מבאג ה-NaN)
+                    // נבטל את הסימון שלה כקבועה כדי לתקן את הנתונים.
+                    if (t.recurrence.isRecurring && (t.recurrence.dayOfMonth === null || typeof t.recurrence.dayOfMonth === 'undefined')) {
+                        t.recurrence.isRecurring = false;
+                        t.recurrence.dayOfMonth = null;
+                    }
+                });
+            }
+        });
+    });
+    return data;
+}
+
 function saveDataToLocal() {
     if (allData[currentMonth]) {
         allData[currentMonth].balance = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
@@ -465,7 +497,8 @@ function saveDataToLocal() {
 
 function loadData() {
     const savedData = localStorage.getItem('budgetData');
-    allData = savedData ? JSON.parse(savedData) : {};
+    let parsedData = savedData ? JSON.parse(savedData) : {};
+    allData = migrateData(parsedData); // <<< תיקון
     
     initializeTags(); // Ensure tags object exists
 
@@ -811,7 +844,7 @@ function importData(event) {
                 const imported = JSON.parse(e.target.result);
                 openConfirmModal('אישור ייבוא נתונים', 'האם לייבא את הנתונים? הנתונים הנוכחיים יוחלפו.', () => {
                     saveStateForUndo();
-                    allData = imported;
+                    allData = migrateData(imported); // <<< תיקון
                     initializeTags(); // Ensure tags object exists after import
                     currentMonth = getExistingMonths().pop() || getCurrentMonthKey();
                     saveDataToLocal();
@@ -975,14 +1008,25 @@ function saveTransaction() {
     const description = document.getElementById('descriptionInput').value.trim();
     const amount = parseFloat(document.getElementById('amountInput').value);
     const isRecurring = document.getElementById('recurrenceCheckbox').checked;
-    const dayOfMonth = parseInt(document.getElementById('recurrenceDayInput').value, 10);
+    
+    // --- התחלה של התיקון ---
+    // 1. קבל את הערך ונתח אותו
+    let dayOfMonth = parseInt(document.getElementById('recurrenceDayInput').value, 10);
+    
+    // 2. ודא ש-NaN (משדה ריק או קלט שגוי) הופך ל-null
+    //    כדי שנוכל לבדוק אותו בצורה אמינה.
+    if (isNaN(dayOfMonth)) {
+        dayOfMonth = null;
+    }
+    // --- סוף התיקון ---
 
     if (!description || !amount || amount <= 0) {
         openConfirmModal('שגיאה', 'נא למלא תיאור וסכום חיובי.', closeConfirmModal);
         return;
     }
     
-    if (isRecurring && (!dayOfMonth || dayOfMonth < 1 || dayOfMonth > 31)) {
+    // עכשיו הבדיקה אמינה יותר כי אנחנו בודקים רק null או טווח
+    if (isRecurring && (dayOfMonth === null || dayOfMonth < 1 || dayOfMonth > 31)) {
         openConfirmModal('שגיאה', 'יש להזין יום חוקי בחודש (1-31) עבור תנועה קבועה.', closeConfirmModal);
         return;
     }
@@ -993,6 +1037,8 @@ function saveTransaction() {
         type: selectedTransactionType,
         recurrence: {
             isRecurring: isRecurring,
+            // אם isRecurring נכון, dayOfMonth *חייב* להיות מספר תקין.
+            // אם isRecurring שגוי, נשמור null.
             dayOfMonth: isRecurring ? dayOfMonth : null
         },
         tags: currentTransactionTags.map(tag => tag.id) // Save tag IDs
@@ -1201,18 +1247,33 @@ function render() {
     const incomeList = document.getElementById('incomeList');
     incomeList.innerHTML = filteredIncome.length === 0 ? '<div class="empty-state">אין הכנסות להצגה</div>' : filteredIncome.map((t) => {
         const isRecurring = t.recurrence?.isRecurring;
-        const badgeClass = isRecurring ? 'badge-regular' : '';
-        const badgeText = isRecurring ? 'קבוע' : '';
-        const recurrenceIcon = isRecurring ? `<svg class="recurrence-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>` : '';
+        
+        let iconsHTML = '';
+        if (isRecurring) {
+            iconsHTML += `<svg class="system-icon icon-recurring" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>`;
+        }
+        
         const originalIndex = currentData.income.findIndex(item => item.id === t.id);
 
-        const dateNote = isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">מתקבל ב-${t.recurrence.dayOfMonth} לחודש ${recurrenceIcon}</div>` : '';
+        const dateNote = isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">מתקבל ב-${t.recurrence.dayOfMonth} לחודש</div>` : '';
         
-        const tagsHTML = (t.tags || []).map(tagId => {
-            const tag = getTagById(tagId);
-            if (!tag) return '';
-            return `<span class="transaction-tag" style="background-color: ${tag.color};">${sanitizeHTML(tag.name)}</span>`;
-        }).join('');
+        let tagsHTML = '';
+        const maxVisibleTags = 3; // Max tags to show inline
+        if (t.tags && t.tags.length > 0) {
+            const visibleTags = t.tags.slice(0, maxVisibleTags);
+            const hiddenTagsCount = t.tags.length - maxVisibleTags;
+
+            tagsHTML = visibleTags.map(tagId => {
+                const tag = getTagById(tagId);
+                if (!tag) return '';
+                return `<span class="transaction-tag" style="background-color: ${tag.color};">${sanitizeHTML(tag.name)}</span>`;
+            }).join('');
+
+            if (hiddenTagsCount > 0) {
+                const allTagIdsJson = JSON.stringify(t.tags);
+                tagsHTML += `<button class="tag-overflow-btn" onclick='showOverflowTags(event, ${allTagIdsJson})'>...+${hiddenTagsCount}</button>`;
+            }
+        }
 
         return `
             <div class="transaction-wrapper">
@@ -1220,7 +1281,10 @@ function render() {
                     <div class="transaction-info">
                         <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'income', '${t.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
                         <div class="transaction-details">
-                            <div class="transaction-text">${sanitizeHTML(t.description)} ${badgeText ? `<span class="transaction-badge ${badgeClass}">${badgeText}</span>` : ''}</div>
+                            <div class="transaction-text">
+                                <span>${sanitizeHTML(t.description)}</span>
+                                <div class="transaction-icons">${iconsHTML}</div>
+                            </div>
                             <div class="transaction-tags-container">${tagsHTML}</div>
                             ${dateNote}
                         </div>
@@ -1262,28 +1326,36 @@ function render() {
     expenseList.innerHTML = filteredExpenses.length === 0 ? '<div class="empty-state">אין הוצאות להצגה</div>' : filteredExpenses.map((t) => {
         const originalIndex = currentData.expenses.findIndex(item => item.id === t.id);
         const isRecurring = t.recurrence?.isRecurring;
-        let badgeClass = '', badgeText = '';
-
+        
+        let iconsHTML = '';
         if (t.type === 'loan') {
-            badgeClass = t.completed ? 'badge-loan completed' : 'badge-loan';
-            badgeText = t.completed ? 'שולמה' : 'הלוואה';
+            iconsHTML += `<svg class="system-icon icon-loan ${t.completed ? 'completed' : ''}" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>`;
         } else if (t.type === 'variable') {
-            badgeClass = 'badge-variable';
-            badgeText = `<svg class="credit-card-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>&nbsp; כרטיס אשראי`;
+            iconsHTML += `<svg class="system-icon icon-variable" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>`;
         } else if (isRecurring) {
-            badgeClass = 'badge-regular';
-            badgeText = 'קבוע';
+            iconsHTML += `<svg class="system-icon icon-recurring" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>`;
         }
 
-        const recurrenceIcon = isRecurring ? `<svg class="recurrence-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>` : '';
         const loanDetails = (t.type === 'loan' && t.originalLoanAmount) ? `<div class="loan-original-amount">סכום הלוואה: ₪${t.originalLoanAmount.toLocaleString('he-IL')}</div>` : '';
-        const dateNote = isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">יורד ב-${t.recurrence.dayOfMonth} לחודש ${recurrenceIcon}</div>` : '';
+        const dateNote = isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">יורד ב-${t.recurrence.dayOfMonth} לחודש</div>` : '';
         
-        const tagsHTML = (t.tags || []).map(tagId => {
-            const tag = getTagById(tagId);
-            if (!tag) return '';
-            return `<span class="transaction-tag" style="background-color: ${tag.color};">${sanitizeHTML(tag.name)}</span>`;
-        }).join('');
+        let tagsHTML = '';
+        const maxVisibleTags = 3; // Max tags to show inline
+        if (t.tags && t.tags.length > 0) {
+            const visibleTags = t.tags.slice(0, maxVisibleTags);
+            const hiddenTagsCount = t.tags.length - maxVisibleTags;
+
+            tagsHTML = visibleTags.map(tagId => {
+                const tag = getTagById(tagId);
+                if (!tag) return '';
+                return `<span class="transaction-tag" style="background-color: ${tag.color};">${sanitizeHTML(tag.name)}</span>`;
+            }).join('');
+
+            if (hiddenTagsCount > 0) {
+                const allTagIdsJson = JSON.stringify(t.tags);
+                tagsHTML += `<button class="tag-overflow-btn" onclick='showOverflowTags(event, ${allTagIdsJson})'>...+${hiddenTagsCount}</button>`;
+            }
+        }
 
         let progressBar = '';
         if (t.type === 'loan' && t.loanTotal) {
@@ -1305,7 +1377,10 @@ function render() {
                 <div class="transaction-info">
                     <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'expense', '${t.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
                     <div class="transaction-details">
-                        <div class="transaction-text">${sanitizeHTML(t.description)} ${badgeText ? `<span class="transaction-badge ${badgeClass}">${badgeText}</span>` : ''}</div>
+                        <div class="transaction-text">
+                            <span>${sanitizeHTML(t.description)}</span>
+                            <div class="transaction-icons">${iconsHTML}</div>
+                        </div>
                         <div class="transaction-tags-container">${tagsHTML}</div>
                         ${dateNote}
                         ${loanDetails}
@@ -1353,7 +1428,7 @@ function render() {
 
     document.getElementById('incomeCollapsedSummary').innerHTML = `<span class="summary-label">סה״כ הכנסות:</span> <span class="summary-value">₪${totalActiveIncome.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
     document.getElementById('expenseCollapsedSummary').innerHTML = `<span class="summary-label">סה״כ הוצאות:</span> <span class="summary-value">₪${totalActiveExpenses.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
-    document.getElementById('summaryCollapsedSummary').innerHTML = `<span class="summary-label">עו"ш צפוי:</span> <span class="summary-value ${finalBalance >= 0 ? 'positive' : 'negative'}">₪${finalBalance.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
+    document.getElementById('summaryCollapsedSummary').innerHTML = `<span class="summary-label">עו"ש צפוי:</span> <span class="summary-value ${finalBalance >= 0 ? 'positive' : 'negative'}">₪${finalBalance.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
     document.getElementById('incomeTotal').textContent = '₪' + incomeTotal.toLocaleString('he-IL', { minimumFractionDigits: 2 });
     document.getElementById('expenseTotal').textContent = '₪' + expenseTotal.toLocaleString('he-IL', { minimumFractionDigits: 2 });
 
@@ -1406,43 +1481,59 @@ function populateRecurringDropdown(type) {
         const list = type === 'income' ? (monthData.income || []) : (monthData.expenses || []);
         list.forEach(t => {
             if (t.recurrence && t.recurrence.isRecurring) {
-                allRecurringTransactions.set(t.description, t);
+                // שינוי 1: המפתח הייחודי הוא עכשיו שם + סכום
+                const uniqueKey = `${t.description}__${t.amount}`;
+                allRecurringTransactions.set(uniqueKey, t);
             }
         });
     });
+    
     const recurringList = Array.from(allRecurringTransactions.values());
+    
+    // שינוי 2: נבדוק כפילויות לפי שם + סכום
     const currentMonthList = type === 'income' ? (allData[currentMonth].income || []) : (allData[currentMonth].expenses || []);
-    const currentDescriptions = new Set(currentMonthList.map(t => t.description));
+    const currentUniqueKeys = new Set(currentMonthList.map(t => `${t.description}__${t.amount}`));
+
     dropdown.innerHTML = '';
     if (recurringList.length === 0) {
         dropdown.innerHTML = '<div class="recurring-dropdown-header">לא נמצאו תנועות קבועות</div>';
         return;
     }
     dropdown.innerHTML = '<div class="recurring-dropdown-header">בחר תנועה להוספה</div>';
+    
     const unaddedTransactions = [];
     recurringList.forEach(t => {
-        const isAlreadyAdded = currentDescriptions.has(t.description);
+        // שינוי 3: נשתמש במפתח הייחודי לבדיקה
+        const uniqueKey = `${t.description}__${t.amount}`;
+        const isAlreadyAdded = currentUniqueKeys.has(uniqueKey);
+        
         if (!isAlreadyAdded) {
             unaddedTransactions.push(t);
         }
+        
         const item = document.createElement('div');
         item.classList.add('filter-option', 'recurring-item');
         if (isAlreadyAdded) {
             item.classList.add('disabled');
         }
+        
         const amountDisplay = `₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}`;
         const icon = isAlreadyAdded ?
             `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>` :
             `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+        
         item.innerHTML = `
             <div>${icon} ${sanitizeHTML(t.description)}</div>
             <div class="amount">${amountDisplay}</div>
         `;
+        
         if (!isAlreadyAdded) {
-            item.onclick = () => addRecurringTransaction(type, t.description);
+            // שינוי 4: נעביר את המפתח הייחודי לפונקציה
+            item.onclick = () => addRecurringTransaction(type, uniqueKey);
         }
         dropdown.appendChild(item);
     });
+    
     if (unaddedTransactions.length > 0) {
         const footer = document.createElement('div');
         footer.classList.add('recurring-dropdown-footer');
@@ -1478,15 +1569,18 @@ function addAllRecurringTransactions(type) {
     document.getElementById(dropdownId).classList.remove('active');
 }
 
-function addRecurringTransaction(type, description) {
-    const transactionToAdd = allRecurringTransactions.get(description);
+function addRecurringTransaction(type, uniqueKey) {
+    // שינוי: הפונקציה מקבלת 'uniqueKey' במקום 'description'
+    const transactionToAdd = allRecurringTransactions.get(uniqueKey);
     if (!transactionToAdd) return;
+    
     saveStateForUndo();
     const newTransaction = { ...transactionToAdd, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true };
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     list.push(newTransaction);
     saveDataToLocal();
     render();
+    
     const dropdownId = type === 'income' ? 'recurringDropdownIncome' : 'recurringDropdownExpense';
     document.getElementById(dropdownId).classList.remove('active');
 }
@@ -1540,6 +1634,7 @@ document.addEventListener('DOMContentLoaded', () => {
             closeNewMonthModal();
             closeEditMonthModal();
             closeTagsManagementModal();
+            closeOverflowTagsModal(); // Added
         }
     });
     document.addEventListener('click', (e) => {
@@ -1799,4 +1894,39 @@ function deleteTag(tagId) {
         closeConfirmModal();
         openTagsManagementModal(); // Re-render the modal
     });
+}
+
+// =======================================================
+// =========== לוגיקה חדשה - חלון תגים עודפים ===========
+// =======================================================
+
+function showOverflowTags(event, tagIds) {
+    event.stopPropagation(); // Stop click from bubbling to the transaction item
+
+    const modal = document.getElementById('tagsOverflowModal');
+    const listContainer = document.getElementById('tagsOverflowModalList');
+    listContainer.innerHTML = ''; // Clear previous tags
+
+    if (!tagIds || tagIds.length === 0) {
+        listContainer.innerHTML = `<div class="empty-state">אין תגים להצגה.</div>`;
+    } else {
+        tagIds.forEach(tagId => {
+            const tag = getTagById(tagId);
+            if (tag) {
+                const tagItem = document.createElement('div');
+                tagItem.className = 'tag-overflow-item';
+                tagItem.innerHTML = `
+                    <span class="tag-preview" style="background-color: ${tag.color};"></span>
+                    <span class="tag-name">${sanitizeHTML(tag.name)}</span>
+                `;
+                listContainer.appendChild(tagItem);
+            }
+        });
+    }
+
+    modal.classList.add('active');
+}
+
+function closeOverflowTagsModal() {
+    document.getElementById('tagsOverflowModal').classList.remove('active');
 }
