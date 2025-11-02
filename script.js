@@ -1554,38 +1554,38 @@ function toggleRecurringDropdown(type) {
 function populateRecurringDropdown(type) {
     const dropdownId = type === 'income' ? 'recurringDropdownIncome' : 'recurringDropdownExpense';
     const dropdown = document.getElementById(dropdownId);
-    allRecurringTransactions.clear();
+    allRecurringTransactions.clear(); // המאגר הזה יכיל עכשיו גם קבועות וגם תבניות
     const allMonthKeys = getExistingMonths();
+    
     allMonthKeys.forEach(monthKey => {
         const monthData = allData[monthKey];
         const list = type === 'income' ? (monthData.income || []) : (monthData.expenses || []);
         list.forEach(t => {
-            if (t.recurrence && t.recurrence.isRecurring) {
-                // שינוי 1: המפתח הייחודי הוא עכשיו שם + סכום
-                const uniqueKey = `${t.description}__${t.amount}`;
-                allRecurringTransactions.set(uniqueKey, t);
+            // 💡 שינוי לוגי: חפש תנועות קבועות או תנועות מסוג "משתנה"
+            if ((t.recurrence && t.recurrence.isRecurring) || (type === 'expense' && t.type === 'variable')) {
+                // 💡 שינוי לוגי: המפתח יהיה התיאור, כדי ללכוד תבניות
+                allRecurringTransactions.set(t.description, t); 
             }
         });
     });
     
     const recurringList = Array.from(allRecurringTransactions.values());
     
-    // שינוי 2: נבדוק כפילויות לפי שם + סכום
+    // 💡 שינוי לוגי: נבדוק כפילויות רק לפי שם התיאור
     const currentMonthList = type === 'income' ? (allData[currentMonth].income || []) : (allData[currentMonth].expenses || []);
-    const currentUniqueKeys = new Set(currentMonthList.map(t => `${t.description}__${t.amount}`));
+    const currentDescriptions = new Set(currentMonthList.map(t => t.description));
 
     dropdown.innerHTML = '';
     if (recurringList.length === 0) {
-        dropdown.innerHTML = '<div class="recurring-dropdown-header">לא נמצאו תנועות קבועות</div>';
+        dropdown.innerHTML = '<div class="recurring-dropdown-header">לא נמצאו תנועות או תבניות</div>';
         return;
     }
     dropdown.innerHTML = '<div class="recurring-dropdown-header">בחר תנועה להוספה</div>';
     
     const unaddedTransactions = [];
     recurringList.forEach(t => {
-        // שינוי 3: נשתמש במפתח הייחודי לבדיקה
-        const uniqueKey = `${t.description}__${t.amount}`;
-        const isAlreadyAdded = currentUniqueKeys.has(uniqueKey);
+        // 💡 שינוי לוגי: נשתמש בתיאור לבדיקה
+        const isAlreadyAdded = currentDescriptions.has(t.description);
         
         if (!isAlreadyAdded) {
             unaddedTransactions.push(t);
@@ -1597,19 +1597,26 @@ function populateRecurringDropdown(type) {
             item.classList.add('disabled');
         }
         
-        const amountDisplay = `₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}`;
         const icon = isAlreadyAdded ?
             `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>` :
             `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
         
+        // 💡 שינוי לוגי: הצג סכום או "סכום משתנה"
+        let amountDisplay = '';
+        if (t.recurrence && t.recurrence.isRecurring) {
+            amountDisplay = `₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}`;
+        } else if (t.type === 'variable') {
+            amountDisplay = `(סכום משתנה)`;
+        }
+
         item.innerHTML = `
             <div>${icon} ${sanitizeHTML(t.description)}</div>
             <div class="amount">${amountDisplay}</div>
         `;
         
         if (!isAlreadyAdded) {
-            // שינוי 4: נעביר את המפתח הייחודי לפונקציה
-            item.onclick = () => addRecurringTransaction(type, uniqueKey);
+            // 💡 שינוי לוגי: נעביר את התיאור לפונקציה
+            item.onclick = () => addRecurringTransaction(type, t.description);
         }
         dropdown.appendChild(item);
     });
@@ -1619,11 +1626,21 @@ function populateRecurringDropdown(type) {
         footer.classList.add('recurring-dropdown-footer');
         const addAllButton = document.createElement('div');
         addAllButton.classList.add('filter-option');
+        
+        // 💡 שינוי לוגי: ספור רק את אלו שהם *באמת* קבועים
+        const trulyRecurringToAdd = unaddedTransactions.filter(t => t.recurrence && t.recurrence.isRecurring).length;
+        
         addAllButton.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-            הוסף הכל (${unaddedTransactions.length})
+            הוסף הכל (${trulyRecurringToAdd})
         `;
-        addAllButton.onclick = () => addAllRecurringTransactions(type);
+        
+        if (trulyRecurringToAdd === 0) {
+            addAllButton.classList.add('disabled');
+        } else {
+            addAllButton.onclick = () => addAllRecurringTransactions(type);
+        }
+        
         footer.appendChild(addAllButton);
         dropdown.appendChild(footer);
     }
@@ -1633,26 +1650,18 @@ function addAllRecurringTransactions(type) {
     saveStateForUndo();
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     
-    // ================================================
-    // =========== 🐛 תיקון באג לוגי ===========
-    // ================================================
-    // במקום לבדוק רק לפי 'description'
-    // ניצור Set של מפתחות ייחודיים (שם + סכום)
-    const currentUniqueKeys = new Set(list.map(t => `${t.description}__${t.amount}`));
+    // 💡 שינוי לוגי: נבדוק כפילויות רק לפי שם התיאור
+    const currentDescriptions = new Set(list.map(t => t.description));
     
     let addedCount = 0;
     allRecurringTransactions.forEach(t => {
-        // נשתמש במפתח הייחודי לבדיקה
-        const uniqueKey = `${t.description}__${t.amount}`;
-        if (!currentUniqueKeys.has(uniqueKey)) {
+        // 💡 שינוי לוגי: הוסף רק אם זה לא קיים, ורק אם זה *באמת* תנועה קבועה (ולא תבנית כ. אשראי)
+        if (!currentDescriptions.has(t.description) && (t.recurrence && t.recurrence.isRecurring)) {
             const newTransaction = { ...t, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${addedCount}`, checked: true };
             list.push(newTransaction);
             addedCount++;
         }
     });
-    // ================================================
-    // =========== 🐛 סוף תיקון באג לוגי ===========
-    // ================================================
 
     if (addedCount > 0) {
         saveDataToLocal();
@@ -1662,18 +1671,45 @@ function addAllRecurringTransactions(type) {
     document.getElementById(dropdownId).classList.remove('active');
 }
 
-function addRecurringTransaction(type, uniqueKey) {
-    // שינוי: הפונקציה מקבלת 'uniqueKey' במקום 'description'
-    const transactionToAdd = allRecurringTransactions.get(uniqueKey);
+function addRecurringTransaction(type, description) { // 💡 הפונקציה מקבלת 'description'
+    // 💡 שינוי לוגי: מצא את התנועה לפי התיאור
+    const transactionToAdd = allRecurringTransactions.get(description);
     if (!transactionToAdd) return;
     
-    saveStateForUndo();
-    const newTransaction = { ...transactionToAdd, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true };
-    const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
-    list.push(newTransaction);
-    saveDataToLocal();
-    render();
+    // --- 💡 כאן כל הקסם 💡 ---
+    // בדוק אם זו תנועה קבועה רגילה או תבנית כרטיס אשראי
     
+    if (transactionToAdd.recurrence && transactionToAdd.recurrence.isRecurring) {
+        // --- התנהגות רגילה: זו תנועה קבועה, פשוט הוסף אותה ---
+        saveStateForUndo();
+        const newTransaction = { ...transactionToAdd, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true };
+        const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
+        list.push(newTransaction);
+        saveDataToLocal();
+        render();
+        
+    } else if (type === 'expense' && transactionToAdd.type === 'variable') {
+        // --- התנהגות חדשה: זו תבנית כרטיס אשראי, פתח את החלון ---
+        
+        // 1. פתח את חלון הוספת ההוצאה
+        openModal(type);
+        
+        // 2. מלא אוטומטית את הנתונים מהתבנית
+        document.getElementById('descriptionInput').value = transactionToAdd.description;
+        selectTransactionType(transactionToAdd.type); // יבחר אוטומטית "כרטיס אשראי"
+
+        // 3. טפל בתגים (אם יש בתבנית)
+        if (transactionToAdd.tags && Array.isArray(transactionToAdd.tags)) {
+            currentTransactionTags = transactionToAdd.tags.map(tagId => getTagById(tagId)).filter(Boolean);
+            renderSelectedTags();
+        }
+
+        // 4. נקה את הסכום והתמקד בו (זה כל הרעיון!)
+        document.getElementById('amountInput').value = '';
+        document.getElementById('amountInput').focus();
+    }
+    
+    // סגור את התפריט הנפתח בכל מקרה
     const dropdownId = type === 'income' ? 'recurringDropdownIncome' : 'recurringDropdownExpense';
     document.getElementById(dropdownId).classList.remove('active');
 }
