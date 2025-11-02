@@ -2013,7 +2013,7 @@ input[type="file"] {
     .transaction-tags-container {
        grid-column: 1 / -1; /* Span full width */
        order: 3; /* Show after text and notes */
-       width: calc(100% - 120px); /* Adjust width to avoid overlap with actions */
+       width: 100%; /* <<< התיקון כאן */
     }
 
     .item-controls {
