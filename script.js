@@ -305,6 +305,10 @@ function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
             });
         }
     }
+
+    // תיקון: עדכון ידני של שדה העו"ש לערך של החודש החדש
+    document.getElementById('currentBalanceInput').value = allData[currentMonth].balance || 0;
+
     closeNewMonthModal();
     saveDataToLocal();
     render();
@@ -324,21 +328,35 @@ function closeNewMonthModal() {
 function navigateMonths(direction) {
     const existingMonths = getExistingMonths();
     const currentIndex = existingMonths.indexOf(currentMonth);
-    if (direction === 1) {
+
+    // 1. שמירת נתוני החודש הנוכחי (עם העו"ש שלו)
+    saveDataToLocal();
+
+    if (direction === 1) { // Next
         if (currentIndex < existingMonths.length - 1) {
+            // 2. קבע את החודש החדש
             currentMonth = existingMonths[currentIndex + 1];
-            saveDataToLocal();
+            
+            // 3. (התיקון) שמור את מפתח החודש החדש ב-localStorage *לפני* הטעינה
+            localStorage.setItem('currentMonth', currentMonth);
+            
+            // 4. טען את נתוני החודש החדש
             loadData();
-        } else {
+        } else { // Reached the end
             const [year, month] = currentMonth.split('-').map(Number);
             const nextDate = new Date(year, month, 1);
             const newMonthKey = `${nextDate.getFullYear()}-${(nextDate.getMonth() + 1).toString().padStart(2, '0')}`;
             openNewMonthModal(newMonthKey, currentMonth);
         }
-    } else if (direction === -1) {
+    } else if (direction === -1) { // Previous
         if (currentIndex > 0) {
+            // 2. קבע את החודש החדש
             currentMonth = existingMonths[currentIndex - 1];
-            saveDataToLocal();
+
+            // 3. (התיקון) שמור את מפתח החודש החדש ב-localStorage *לפני* הטעינה
+            localStorage.setItem('currentMonth', currentMonth);
+
+            // 4. טען את נתוני החודש החדש
             loadData();
         }
     }
@@ -393,11 +411,17 @@ function deleteCurrentMonth() {
     const existingMonths = getExistingMonths();
     const currentIndex = existingMonths.indexOf(monthToDelete);
     let newCurrentMonth = (currentIndex > 0) ? existingMonths[currentIndex - 1] : (existingMonths.length > 1 ? existingMonths[0] : getCurrentMonthKey());
+    
     delete allData[monthToDelete];
+    
     if (Object.keys(allData).length === 1 && allData.tags) { // Only tags object left
         allData[newCurrentMonth] = { income: [], expenses: [], balance: 0 };
     }
     currentMonth = newCurrentMonth;
+    
+    // תיקון: עדכון ידני של שדה העו"ש לערך של החודש החדש
+    document.getElementById('currentBalanceInput').value = allData[currentMonth].balance || 0;
+
     closeEditMonthModal();
     saveDataToLocal();
     render();
@@ -412,18 +436,37 @@ function jumpToMonth(monthKey) {
         toggleMonthJumper();
         return;
     }
+
+    // 1. שמירת נתוני החודש הנוכחי
+    saveDataToLocal(); 
+
+    // 2. קבע את החודש החדש
     currentMonth = monthKey;
+
+    // 3. (התיקון) שמור את מפתח החודש החדש ב-localStorage *לפני* הטעינה
+    localStorage.setItem('currentMonth', currentMonth);
+    
     toggleMonthJumper();
-    saveDataToLocal();
+    
+    // 4. טען את נתוני החודש החדש
     loadData();
 }
 
 function jumpToCurrentMonth() {
     const todayMonthKey = getCurrentMonthKey();
     if (currentMonth === todayMonthKey) return;
+    
+    // 1. שמירת נתוני החודש הנוכחי
+    saveDataToLocal();
+
     if (allData[todayMonthKey]) {
+        // 2. קבע את החודש החדש
         currentMonth = todayMonthKey;
-        saveDataToLocal();
+
+        // 3. (התיקון) שמור את מפתח החודש החדש ב-localStorage *לפני* הטעינה
+        localStorage.setItem('currentMonth', currentMonth);
+
+        // 4. טען את נתוני החודש החדש
         loadData();
     } else {
         const existingMonths = getExistingMonths();
@@ -1117,8 +1160,7 @@ function toggleCheck(event, type, id) {
     const transaction = list.find(t => t.id == id);
     if (transaction) {
         transaction.checked = !transaction.checked;
-        saveDataToLocal();
-        render();
+        // הפונקציות save ו-render יקראו עכשיו מתוך handleListClick
     }
 }
 
@@ -1126,13 +1168,19 @@ let currentEditingElement = null;
 
 function editAmount(event, type, id) {
     event.stopPropagation();
-    const amountWrapper = event.currentTarget;
-    if (amountWrapper.classList.contains('editing')) return;
+    // --- 🐞 התיקון הקריטי כאן ---
+    // השתמש ב-event.target כדי למצוא את האלמנט הפנימי שעליו לחצו
+    // ולאחר מכן חפש את העטיפה שלו
+    const amountWrapper = event.target.closest('.transaction-amount'); 
+    
+    if (!amountWrapper || amountWrapper.classList.contains('editing')) return;
     if (currentEditingElement) currentEditingElement.querySelector('.inline-edit-input').blur();
+    
     const amountInput = amountWrapper.querySelector('.inline-edit-input');
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     const transaction = list.find(t => t.id == id);
     if (!transaction) return;
+    
     currentEditingElement = amountWrapper;
     amountWrapper.dataset.id = id;
     amountWrapper.classList.add('editing');
@@ -1190,12 +1238,20 @@ function handleApplyAction(type, id, action) {
     if (!transaction) return;
     const amount = transaction.amount;
     let currentBalanceValue = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
+    
     if (type === 'income') {
         currentBalanceValue += amount;
     } else {
         currentBalanceValue -= amount;
     }
+
+    // --- התיקון כאן ---
+    // עיגול התוצאה ל-2 ספרות עשרוניות כדי למנוע שגיאות JavaScript
+    currentBalanceValue = Math.round(currentBalanceValue * 100) / 100;
+    // --- סוף התיקון ---
+
     document.getElementById('currentBalanceInput').value = currentBalanceValue;
+    
     if (action === 'apply-delete') {
         const indexToDelete = list.findIndex(t => t.id == id);
         if (indexToDelete > -1) list.splice(indexToDelete, 1);
@@ -1271,15 +1327,17 @@ function render() {
 
             if (hiddenTagsCount > 0) {
                 const allTagIdsJson = JSON.stringify(t.tags);
-                tagsHTML += `<button class="tag-overflow-btn" onclick='showOverflowTags(event, ${allTagIdsJson})'>...+${hiddenTagsCount}</button>`;
+                // 🚀 שיפור: שימוש ב-data attributes במקום onclick
+                tagsHTML += `<button class="tag-overflow-btn" data-action="show-overflow-tags" data-tags='${allTagIdsJson}'>...+${hiddenTagsCount}</button>`;
             }
         }
 
+        // 🚀 שיפור: הסרת כל ה-onclick והוספת data attributes
         return `
             <div class="transaction-wrapper">
-                <div class="transaction-item ${!t.checked ? 'inactive' : ''}">
+                <div class="transaction-item ${!t.checked ? 'inactive' : ''}" data-id="${t.id}" data-type="income">
                     <div class="transaction-info">
-                        <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'income', '${t.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+                        <div class="transaction-check ${t.checked ? 'checked' : ''}" data-action="toggle-check"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
                         <div class="transaction-details">
                             <div class="transaction-text">
                                 <span>${sanitizeHTML(t.description)}</span>
@@ -1289,19 +1347,19 @@ function render() {
                             ${dateNote}
                         </div>
                     </div>
-                    <div class="transaction-amount" onclick="editAmount(event, 'income', '${t.id}')">
+                    <div class="transaction-amount" data-action="edit-amount">
                         <span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>
                         <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'income')">
                     </div>
                     <div class="item-controls">
                         <div class="sort-buttons ${manualSortActive.income ? 'visible' : ''}">
-                            <button class="sort-btn" onclick="moveItem(event, 'income', '${t.id}', 'up')" ${originalIndex === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
-                            <button class="sort-btn" onclick="moveItem(event, 'income', '${t.id}', 'down')" ${originalIndex === (currentData.income || []).length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+                            <button class="sort-btn" data-action="move-up" ${originalIndex === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
+                            <button class="sort-btn" data-action="move-down" ${originalIndex === (currentData.income || []).length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
                         </div>
                         <div class="transaction-actions">
-                            <button class="action-btn edit" onclick="openModal('income', '${t.id}')" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
-                            <button class="action-btn apply" onclick="openApplyOptionsModal('income', '${t.id}')" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
-                            <button class="action-btn delete" onclick="deleteTransaction(event, 'income', '${t.id}')" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                            <button class="action-btn edit" data-action="edit" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+                            <button class="action-btn apply" data-action="apply" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
+                            <button class="action-btn delete" data-action="delete" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
                         </div>
                     </div>
                 </div>
@@ -1353,7 +1411,8 @@ function render() {
 
             if (hiddenTagsCount > 0) {
                 const allTagIdsJson = JSON.stringify(t.tags);
-                tagsHTML += `<button class="tag-overflow-btn" onclick='showOverflowTags(event, ${allTagIdsJson})'>...+${hiddenTagsCount}</button>`;
+                // 🚀 שיפור: שימוש ב-data attributes במקום onclick
+                tagsHTML += `<button class="tag-overflow-btn" data-action="show-overflow-tags" data-tags='${allTagIdsJson}'>...+${hiddenTagsCount}</button>`;
             }
         }
 
@@ -1367,15 +1426,18 @@ function render() {
                     <div class="loan-progress-container"><div class="progress-bar-container"><div class="progress-bar-fill" style="width: ${percentage}%"></div></div>
                         <div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div>
                     </div>
-                    <button class="loan-next-payment-btn" onclick="nextLoanPayment(event, 'expense', '${t.id}')" ${isComplete ? 'disabled' : ''}>
+                    <button class="loan-next-payment-btn" data-action="next-loan" ${isComplete ? 'disabled' : ''}>
                         ${isComplete ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'}
                     </button>
                 </div>`;
         }
+        
+        // 🚀 שיפור: הסרת כל ה-onclick והוספת data attributes
         const itemHTML = `
-            <div class="transaction-item ${t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${t.completed ? 'completed' : ''}" ${t.type === 'loan' ? `onclick="toggleLoanProgress('expense', '${t.id}')"` : ''}>
+            <div class="transaction-item ${t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${t.completed ? 'completed' : ''}" 
+                 data-id="${t.id}" data-type="expense" ${t.type === 'loan' ? `data-action="toggle-loan"` : ''}>
                 <div class="transaction-info">
-                    <div class="transaction-check ${t.checked ? 'checked' : ''}" onclick="toggleCheck(event, 'expense', '${t.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+                    <div class="transaction-check ${t.checked ? 'checked' : ''}" data-action="toggle-check"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
                     <div class="transaction-details">
                         <div class="transaction-text">
                             <span>${sanitizeHTML(t.description)}</span>
@@ -1386,19 +1448,19 @@ function render() {
                         ${loanDetails}
                     </div>
                 </div>
-                <div class="transaction-amount" onclick="editAmount(event, 'expense', '${t.id}')">
+                <div class="transaction-amount" data-action="edit-amount">
                     <span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>
                     <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'expense')">
                 </div>
                 <div class="item-controls">
                     <div class="sort-buttons ${manualSortActive.expense ? 'visible' : ''}">
-                        <button class="sort-btn" onclick="moveItem(event, 'expense', '${t.id}', 'up')" ${originalIndex === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
-                        <button class="sort-btn" onclick="moveItem(event, 'expense', '${t.id}', 'down')" ${originalIndex === (currentData.expenses || []).length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+                        <button class="sort-btn" data-action="move-up" ${originalIndex === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
+                        <button class="sort-btn" data-action="move-down" ${originalIndex === (currentData.expenses || []).length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
                     </div>
                     <div class="transaction-actions">
-                        <button class="action-btn edit" onclick="openModal('expense', '${t.id}')" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
-                        <button class="action-btn apply" onclick="openApplyOptionsModal('expense', '${t.id}')" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
-                        <button class="action-btn delete" onclick="deleteTransaction(event, 'expense', '${t.id}')" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                        <button class="action-btn edit" data-action="edit" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+                        <button class="action-btn apply" data-action="apply" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
+                        <button class="action-btn delete" data-action="delete" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
                     </div>
                 </div>
             </div>
@@ -1552,15 +1614,28 @@ function populateRecurringDropdown(type) {
 function addAllRecurringTransactions(type) {
     saveStateForUndo();
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
-    const currentDescriptions = new Set(list.map(t => t.description));
+    
+    // ================================================
+    // =========== 🐛 תיקון באג לוגי ===========
+    // ================================================
+    // במקום לבדוק רק לפי 'description'
+    // ניצור Set של מפתחות ייחודיים (שם + סכום)
+    const currentUniqueKeys = new Set(list.map(t => `${t.description}__${t.amount}`));
+    
     let addedCount = 0;
     allRecurringTransactions.forEach(t => {
-        if (!currentDescriptions.has(t.description)) {
+        // נשתמש במפתח הייחודי לבדיקה
+        const uniqueKey = `${t.description}__${t.amount}`;
+        if (!currentUniqueKeys.has(uniqueKey)) {
             const newTransaction = { ...t, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${addedCount}`, checked: true };
             list.push(newTransaction);
             addedCount++;
         }
     });
+    // ================================================
+    // =========== 🐛 סוף תיקון באג לוגי ===========
+    // ================================================
+
     if (addedCount > 0) {
         saveDataToLocal();
         render();
@@ -1586,6 +1661,77 @@ function addRecurringTransaction(type, uniqueKey) {
 }
 
 // ================================================
+// 🚀 שיפור ביצועים: ניהול אירועים מרכזי (גרסה מתוקנת)
+// ================================================
+function handleListClick(event) {
+    const target = event.target;
+    
+    // 1. מצא את העטיפה (wrapper) של כל התנועה
+    const wrapper = target.closest('.transaction-wrapper');
+    if (!wrapper) return; // לא נלחץ על תנועה
+
+    // 2. מצא את פריט התנועה הראשי (כדי לקבל ID וסוג)
+    const transactionItem = wrapper.querySelector('.transaction-item');
+    if (!transactionItem) return; // נדרש לצורך קבלת מידע
+
+    const id = transactionItem.dataset.id;
+    const type = transactionItem.dataset.type;
+
+    // 3. מצא את האלמנט הספציפי עם "פעולה" שלחצו עליו
+    const actionElement = target.closest('[data-action]');
+
+    if (actionElement) {
+        // --- אם לחצו על כפתור ספציפי או אזור פעולה ---
+        event.stopPropagation(); // מנע "זליגה" של הקליק
+        const action = actionElement.dataset.action;
+
+        switch (action) {
+            case 'toggle-check':
+                toggleCheck(event, type, id);
+                saveDataToLocal();
+                render();
+                break;
+            case 'edit':
+                openModal(type, id);
+                break;
+            case 'delete':
+                deleteTransaction(event, type, id);
+                break;
+            case 'apply':
+                openApplyOptionsModal(type, id);
+                break;
+            case 'edit-amount':
+                // אל תפעיל אם כבר לחצנו על שדה הקלט הפתוח
+                if (target.tagName.toLowerCase() === 'input') return;
+                editAmount(event, type, id);
+                break;
+            case 'move-up':
+                moveItem(event, type, id, 'up');
+                break;
+            case 'move-down':
+                moveItem(event, type, id, 'down');
+                break;
+            case 'next-loan': // <-- התיקון כאן, הכפתור הזה יזוהה עכשיו
+                nextLoanPayment(event, type, id);
+                break;
+            case 'show-overflow-tags':
+                try {
+                    const tags = JSON.parse(actionElement.dataset.tags);
+                    showOverflowTags(event, tags);
+                } catch (e) {
+                    console.error("Failed to parse tags JSON", e);
+                }
+                break;
+            case 'toggle-loan': // <-- זה מטפל בלחיצה על גוף ההלוואה
+                toggleLoanProgress(type, id);
+                break;
+        }
+    }
+    // אם לא נלחץ אלמנט עם data-action (למשל, לחיצה על רווח לבן), לא יקרה כלום.
+}
+
+
+// ================================================
 // =========== Event Listeners Setup ===========
 // ================================================
 document.addEventListener('DOMContentLoaded', () => {
@@ -1597,6 +1743,12 @@ document.addEventListener('DOMContentLoaded', () => {
     setupBalanceControls();
     setupTagsInputEventListeners(); // New
     
+    // ================================================
+    // 🚀 שיפור ביצועים: מאזיני אירועים לרשימות
+    // ================================================
+    document.getElementById('incomeList').addEventListener('click', handleListClick);
+    document.getElementById('expenseList').addEventListener('click', handleListClick);
+
     document.getElementById('prevMonthBtn').addEventListener('click', () => navigateMonths(-1));
     document.getElementById('nextMonthBtn').addEventListener('click', () => navigateMonths(1));
     document.getElementById('deleteMonthBtn').addEventListener('click', openEditMonthModal);
@@ -1678,12 +1830,22 @@ function closeConfirmModal() {
 function setupBalanceControls() {
     let currentStep = 100;
     const balanceInput = document.getElementById('currentBalanceInput');
+    
     const updateBalance = (amount) => {
-        balanceInput.value = (parseFloat(balanceInput.value) || 0) + amount;
+        let newBalance = (parseFloat(balanceInput.value) || 0) + amount;
+        
+        // --- התיקון כאן ---
+        // עיגול התוצאה ל-2 ספרות עשרוניות
+        newBalance = Math.round(newBalance * 100) / 100;
+        // --- סוף התיקון ---
+
+        balanceInput.value = newBalance;
         updateSummary();
     };
+    
     document.getElementById('incrementBtn').addEventListener('click', () => updateBalance(currentStep));
     document.getElementById('decrementBtn').addEventListener('click', () => updateBalance(-currentStep));
+    
     document.getElementById('balanceStepSelector').addEventListener('click', (e) => {
         if (e.target.classList.contains('step-btn')) {
             document.querySelector('#balanceStepSelector .active').classList.remove('active');
