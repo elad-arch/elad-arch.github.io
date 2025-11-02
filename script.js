@@ -298,10 +298,31 @@ function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
         recurringExpenses.forEach(t => {
             allData[currentMonth].expenses.push({ ...t, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true });
         });
+
         if (allData[prevMonthKey] && allData[prevMonthKey].expenses) {
             const loansToCopy = allData[prevMonthKey].expenses.filter(t => t.type === 'loan' && !t.completed);
+            
             loansToCopy.forEach(loan => {
-                allData[currentMonth].expenses.push({ ...loan, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true });
+                // 1. יוצרים עותק של ההלוואה הקודמת
+                const newLoan = { ...loan };
+
+                // 2. נותנים לה ID חדש
+                newLoan.id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                
+                // 3. 🔥 מקדמים את התשלום הנוכחי ב-1
+                newLoan.loanCurrent++;
+
+                // 4. בודקים אם התשלום הזה מסיים את ההלוואה
+                if (newLoan.loanCurrent >= newLoan.loanTotal) {
+                    newLoan.completed = true;
+                    newLoan.checked = false; // הלוואה ששולמה לא צריכה להיות מסומנת
+                } else {
+                    newLoan.completed = false; // מוודאים שהיא לא מסומנת כגמורה
+                    newLoan.checked = true;  // מסמנים אותה כתשלום פעיל לחודש זה
+                }
+
+                // 5. מוסיפים את ההלוואה המעודכנת לחודש החדש
+                allData[currentMonth].expenses.push(newLoan);
             });
         }
     }
@@ -782,39 +803,48 @@ function populateSortDropdown(type) {
 
 function setSortMode(type, mode) {
     const settings = sortSettings[type];
+
     if (mode === 'manual') {
-        manualSortActive[type] = !manualSortActive[type];
-        settings.mode = 'manual';
-    } else {
-        manualSortActive[type] = false;
+        // 💡 --- כאן הלוגיקה החדשה --- 💡
+        if (settings.mode === 'manual') {
+            // אם אנחנו כבר במצב ידני, הלחיצה הבאה מפעילה/מכבה את החיצים
+            manualSortActive[type] = !manualSortActive[type];
+        } else {
+            // אם אנחנו עוברים ממצב אחר (כמו 'סכום') למצב ידני:
+            // 1. קבע את המצב ל'ידני' (זה יבטל את המיון הקודם)
+            settings.mode = 'manual';
+            // 2. ודא שהחיצים כבויים!
+            manualSortActive[type] = false; 
+        }
+        // 💡 --- סוף הלוגיקה החדשה --- 💡
+
+    } else { // משתמש לחץ על 'סכום', 'א'-ב'' וכו'.
+        // 1. כבה את מצב העריכה הידני (החיצים) בכל מקרה
+        manualSortActive[type] = false; 
+        
+        // 2. טפל בהחלפת כיוון המיון (אם לוחצים על 'סכום' פעמיים)
         if (settings.mode === 'amount' && mode === 'amount') {
             settings.direction = settings.direction === 'asc' ? 'desc' : 'asc';
         } else {
+            // 3. קבע את מצב המיון החדש
             settings.mode = mode;
             settings.direction = 'asc';
         }
     }
-    localStorage.setItem('sortSettings', JSON.stringify(sortSettings));
+
     document.querySelectorAll('.filter-dropdown').forEach(d => d.classList.remove('active'));
     render();
 }
 
-function loadSortSettings() {
-    const savedSortSettings = localStorage.getItem('sortSettings');
-    if (savedSortSettings) {
-        sortSettings = JSON.parse(savedSortSettings);
-    }
-}
-
 function loadFilters() {
-    filterIncome = localStorage.getItem('incomeFilter') || 'all';
-    filterExpense = localStorage.getItem('expenseFilter') || 'all';
-    document.querySelectorAll('#filterDropdownIncome .filter-option').forEach(opt => {
-        opt.classList.toggle('selected', opt.dataset.filter === filterIncome);
-    });
-    document.querySelectorAll('#filterDropdownExpense .filter-option').forEach(opt => {
-        opt.classList.toggle('selected', opt.dataset.filter === filterExpense);
-    });
+    let savedIncomeFilter = localStorage.getItem('incomeFilter') || 'all';
+    let savedExpenseFilter = localStorage.getItem('expenseFilter') || 'all';
+
+    // ודא שלא נטען סינון תג ישן בטעות מרענון
+    filterIncome = savedIncomeFilter.startsWith('tag-') ? 'all' : savedIncomeFilter;
+    filterExpense = savedExpenseFilter.startsWith('tag-') ? 'all' : savedExpenseFilter;
+    
+    // 💡 אין צורך לעדכן את ה-DOM מכאן, הוא יטופל דינמית
 }
 
 function moveItem(event, type, id, direction) {
@@ -850,7 +880,17 @@ function nextLoanPayment(event, type, id) {
 function toggleFilter(type) {
     const otherDropdownId = type === 'income' ? 'sortDropdownIncome' : 'sortDropdownExpense';
     document.getElementById(otherDropdownId).classList.remove('active');
-    document.getElementById(type === 'income' ? 'filterDropdownIncome' : 'filterDropdownExpense').classList.toggle('active');
+    
+    const dropdownId = type === 'income' ? 'filterDropdownIncome' : 'filterDropdownExpense';
+    const dropdown = document.getElementById(dropdownId);
+
+    if (dropdown.classList.contains('active')) {
+        dropdown.classList.remove('active');
+        return;
+    }
+
+    populateFilterDropdown(type); // 💡 קריאה לפונקציה החדשה
+    dropdown.classList.add('active');
 }
 
 function setFilter(type, filter) {
@@ -859,11 +899,19 @@ function setFilter(type, filter) {
     } else {
         filterExpense = filter;
     }
-    localStorage.setItem(`${type}Filter`, filter);
+
+    // 💡 שינוי לוגי: אל תשמור סינון תגים זמני ב-LocalStorage
+    if (filter.startsWith('tag-')) {
+         // אל תעשה כלום עם localStorage
+    } else {
+        localStorage.setItem(`${type}Filter`, filter);
+    }
+
     const dropdownId = type === 'income' ? 'filterDropdownIncome' : 'filterDropdownExpense';
     document.getElementById(dropdownId).classList.remove('active');
-    document.querySelectorAll(`#${dropdownId} .filter-option`).forEach(opt => opt.classList.remove('selected'));
-    document.querySelector(`#${dropdownId} [data-filter="${filter}"]`).classList.add('selected');
+    
+    // אין צורך לעדכן 'selected' ידנית, התפריט ייבנה מחדש בפתיחה הבאה
+    
     render();
 }
 
@@ -1351,25 +1399,25 @@ function render() {
 function getFilteredAndSortedData(type) {
     const currentData = allData[currentMonth];
     
-    // --- 🪲 התיקון כאן 🪲 ---
-    // קבע את שם המפתח הנכון במבנה הנתונים
     const dataKey = (type === 'income') ? 'income' : 'expenses';
-    // -----------------------
-
     const filter = (type === 'income') ? filterIncome : filterExpense;
     
-    // השתמש במפתח הנכון כדי למשוך את הנתונים
     let filteredList = [...(currentData[dataKey] || [])];
 
-    // לוגיקת סינון
-    if (filter !== 'all') {
+    // 💡 --- לוגיקת סינון חדשה --- 💡
+    if (filter.startsWith('tag-')) {
+        const tagId = filter.substring(4); // חלץ את ה-ID
+        filteredList = filteredList.filter(t => t.tags && t.tags.includes(tagId));
+    }
+    // ---------------------------------
+    else if (filter !== 'all') {
         if (filter === 'active') filteredList = filteredList.filter(t => t.checked);
         else if (filter === 'inactive') filteredList = filteredList.filter(t => !t.checked);
         else if (filter === 'regular') filteredList = filteredList.filter(t => t.recurrence?.isRecurring);
         else filteredList = filteredList.filter(t => t.type === filter);
     }
 
-    // לוגיקת מיון
+    // לוגיקת מיון (נשארת זהה)
     const sortSetting = sortSettings[type];
     if (sortSetting.mode === 'alpha') filteredList.sort((a, b) => a.description.localeCompare(b.description, 'he'));
     else if (sortSetting.mode === 'amount') filteredList.sort((a, b) => sortSetting.direction === 'asc' ? a.amount - b.amount : b.amount - a.amount);
@@ -1710,7 +1758,6 @@ function handleListClick(event) {
 document.addEventListener('DOMContentLoaded', () => {
     loadTheme();
     loadHeaderPinState();
-    loadSortSettings(); 
     loadData();
     loadCardStates();
     setupBalanceControls();
@@ -2064,4 +2111,88 @@ function showOverflowTags(event, tagIds) {
 
 function closeOverflowTagsModal() {
     document.getElementById('tagsOverflowModal').classList.remove('active');
+}
+
+// =======================================================
+// =========== פונקציית עזר: קבלת תגים לחודש נוכחי ===========
+// =======================================================
+function getTagsForCurrentMonth(type) {
+    const currentData = allData[currentMonth];
+    const dataKey = (type === 'income') ? 'income' : 'expenses';
+    const transactions = currentData[dataKey] || [];
+    const tagIds = new Set();
+    transactions.forEach(t => {
+        if (t.tags) {
+            t.tags.forEach(tagId => tagIds.add(tagId));
+        }
+    });
+    // המר מ-ID לאובייקטים שלמים של תג, וסנן החוצה תגים שנמחקו
+    return Array.from(tagIds).map(id => getTagById(id)).filter(Boolean); 
+}
+
+// =======================================================
+// =========== פונקציית עזר: בניית תפריט סינון דינמי ===========
+// =======================================================
+function populateFilterDropdown(type) {
+    const dropdownId = type === 'income' ? 'filterDropdownIncome' : 'filterDropdownExpense';
+    const dropdown = document.getElementById(dropdownId);
+    const currentFilter = (type === 'income') ? filterIncome : filterExpense;
+
+    // 1. אובייקט עזר לאייקוני SVG (שהעתקנו מה-HTML המקורי)
+    const icons = {
+        all: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>',
+        active: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+        inactive: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>',
+        regular: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>',
+        variable: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>',
+        loan: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="12" x2="18" y2="12"/></svg>'
+    };
+
+    // 2. הגדרת אפשרויות בסיס
+    let options = [
+        { filter: 'all', icon: icons.all, text: 'הצג הכל' },
+        { filter: 'active', icon: icons.active, text: 'תנועות פעילות' },
+        { filter: 'inactive', icon: icons.inactive, text: 'תנועות לא פעילות' },
+        { filter: 'regular', icon: icons.regular, text: 'קבועות' }
+    ];
+    
+    if (type === 'expense') {
+        options.push({ filter: 'variable', icon: icons.variable, text: 'כרטיס אשראי' });
+        options.push({ filter: 'loan', icon: icons.loan, text: 'הלוואות' });
+    }
+
+    // 3. קבלת תגים ייחודיים לחודש זה
+    const tags = getTagsForCurrentMonth(type).sort((a, b) => a.name.localeCompare(b.name, 'he'));
+    
+    // 4. בניית ה-HTML
+    let html = '';
+    options.forEach(opt => {
+        const isSelected = currentFilter === opt.filter;
+        html += `<div class="filter-option ${isSelected ? 'selected' : ''}" data-filter="${opt.filter}">
+                    ${opt.icon} ${sanitizeHTML(opt.text)}
+                 </div>`;
+    });
+
+    if (tags.length > 0) {
+        // שימוש חוזר בעיצוב הכותרת מתפריט התנועות הקבועות
+        html += `<div class="recurring-dropdown-header">סינון לפי תגים</div>`; 
+        tags.forEach(tag => {
+            const filterKey = `tag-${tag.id}`; // מפתח ייחודי לסינון תג
+            const isSelected = currentFilter === filterKey;
+            // שימוש חוזר בעיצוב תצוגה מקדימה של תג
+            html += `<div class="filter-option ${isSelected ? 'selected' : ''}" data-filter="${filterKey}">
+                        <span class="tag-preview" style="background-color: ${tag.color};"></span>
+                        ${sanitizeHTML(tag.name)}
+                     </div>`;
+        });
+    }
+    
+    dropdown.innerHTML = html;
+
+    // 5. חיבור מאזיני אירועים חדשים לפריטים שיצרנו
+    dropdown.querySelectorAll('.filter-option').forEach(option => {
+        option.addEventListener('click', () => {
+            setFilter(type, option.dataset.filter);
+        });
+    });
 }
