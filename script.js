@@ -1286,188 +1286,18 @@ function render() {
     const currentData = allData[currentMonth];
     if (!currentData) return;
 
-    // --- RENDER INCOME ---
-    let filteredIncome = [...(currentData.income || [])];
-    if (filterIncome !== 'all') {
-        if (filterIncome === 'active') filteredIncome = filteredIncome.filter(t => t.checked);
-        else if (filterIncome === 'inactive') filteredIncome = filteredIncome.filter(t => !t.checked);
-        else if (filterIncome === 'regular') filteredIncome = filteredIncome.filter(t => t.recurrence?.isRecurring);
-        else filteredIncome = filteredIncome.filter(t => t.type === filterIncome);
-    }
+    // 1. קבל נתונים מפולטרים וממוינים
+    const filteredIncome = getFilteredAndSortedData('income');
+    const filteredExpenses = getFilteredAndSortedData('expense');
 
-    const incomeSort = sortSettings.income;
-    if (incomeSort.mode === 'alpha') filteredIncome.sort((a, b) => a.description.localeCompare(b.description, 'he'));
-    else if (incomeSort.mode === 'amount') filteredIncome.sort((a, b) => incomeSort.direction === 'asc' ? a.amount - b.amount : b.amount - a.amount);
-    else if (incomeSort.mode === 'date') filteredIncome.sort((a, b) => (a.recurrence?.dayOfMonth || 99) - (b.recurrence?.dayOfMonth || 99));
-
+    // 2. צור את ה-HTML
     const incomeList = document.getElementById('incomeList');
-    incomeList.innerHTML = filteredIncome.length === 0 ? '<div class="empty-state">אין הכנסות להצגה</div>' : filteredIncome.map((t) => {
-        const isRecurring = t.recurrence?.isRecurring;
-        
-        let iconsHTML = '';
-        if (isRecurring) {
-            iconsHTML += `<svg class="system-icon icon-recurring" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>`;
-        }
-        
-        const originalIndex = currentData.income.findIndex(item => item.id === t.id);
-
-        const dateNote = isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">מתקבל ב-${t.recurrence.dayOfMonth} לחודש</div>` : '';
-        
-        let tagsHTML = '';
-        const maxVisibleTags = 3; // Max tags to show inline
-        if (t.tags && t.tags.length > 0) {
-            const visibleTags = t.tags.slice(0, maxVisibleTags);
-            const hiddenTagsCount = t.tags.length - maxVisibleTags;
-
-            tagsHTML = visibleTags.map(tagId => {
-                const tag = getTagById(tagId);
-                if (!tag) return '';
-                return `<span class="transaction-tag" style="background-color: ${tag.color};">${sanitizeHTML(tag.name)}</span>`;
-            }).join('');
-
-            if (hiddenTagsCount > 0) {
-                const allTagIdsJson = JSON.stringify(t.tags);
-                // 🚀 שיפור: שימוש ב-data attributes במקום onclick
-                tagsHTML += `<button class="tag-overflow-btn" data-action="show-overflow-tags" data-tags='${allTagIdsJson}'>...+${hiddenTagsCount}</button>`;
-            }
-        }
-
-        // 🚀 שיפור: הסרת כל ה-onclick והוספת data attributes
-        return `
-            <div class="transaction-wrapper">
-                <div class="transaction-item ${!t.checked ? 'inactive' : ''}" data-id="${t.id}" data-type="income">
-                    <div class="transaction-info">
-                        <div class="transaction-check ${t.checked ? 'checked' : ''}" data-action="toggle-check"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
-                        <div class="transaction-details">
-                            <div class="transaction-text">
-                                <span>${sanitizeHTML(t.description)}</span>
-                                <div class="transaction-icons">${iconsHTML}</div>
-                            </div>
-                            <div class="transaction-tags-container">${tagsHTML}</div>
-                            ${dateNote}
-                        </div>
-                    </div>
-                    <div class="transaction-amount" data-action="edit-amount">
-                        <span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>
-                        <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'income')">
-                    </div>
-                    <div class="item-controls">
-                        <div class="sort-buttons ${manualSortActive.income ? 'visible' : ''}">
-                            <button class="sort-btn" data-action="move-up" ${originalIndex === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
-                            <button class="sort-btn" data-action="move-down" ${originalIndex === (currentData.income || []).length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
-                        </div>
-                        <div class="transaction-actions">
-                            <button class="action-btn edit" data-action="edit" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
-                            <button class="action-btn apply" data-action="apply" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
-                            <button class="action-btn delete" data-action="delete" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
-                        </div>
-                    </div>
-                </div>
-            </div>`;
-    }).join('');
-
-    // --- RENDER EXPENSES ---
-    let filteredExpenses = [...(currentData.expenses || [])];
-    if (filterExpense !== 'all') {
-        if (filterExpense === 'active') filteredExpenses = filteredExpenses.filter(t => t.checked);
-        else if (filterExpense === 'inactive') filteredExpenses = filteredExpenses.filter(t => !t.checked);
-        else if (filterExpense === 'regular') filteredExpenses = filteredExpenses.filter(t => t.recurrence?.isRecurring);
-        else filteredExpenses = filteredExpenses.filter(t => t.type === filterExpense);
-    }
-
-    const expenseSort = sortSettings.expense;
-    if (expenseSort.mode === 'alpha') filteredExpenses.sort((a, b) => a.description.localeCompare(b.description, 'he'));
-    else if (expenseSort.mode === 'amount') filteredExpenses.sort((a, b) => expenseSort.direction === 'asc' ? a.amount - b.amount : b.amount - a.amount);
-    else if (expenseSort.mode === 'date') filteredExpenses.sort((a, b) => (a.recurrence?.dayOfMonth || 99) - (b.recurrence?.dayOfMonth || 99));
+    incomeList.innerHTML = renderTransactionList('income', filteredIncome, currentData.income);
 
     const expenseList = document.getElementById('expenseList');
-    expenseList.innerHTML = filteredExpenses.length === 0 ? '<div class="empty-state">אין הוצאות להצגה</div>' : filteredExpenses.map((t) => {
-        const originalIndex = currentData.expenses.findIndex(item => item.id === t.id);
-        const isRecurring = t.recurrence?.isRecurring;
-        
-        let iconsHTML = '';
-        if (t.type === 'loan') {
-            iconsHTML += `<svg class="system-icon icon-loan ${t.completed ? 'completed' : ''}" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>`;
-        } else if (t.type === 'variable') {
-            iconsHTML += `<svg class="system-icon icon-variable" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>`;
-        } else if (isRecurring) {
-            iconsHTML += `<svg class="system-icon icon-recurring" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>`;
-        }
+    expenseList.innerHTML = renderTransactionList('expense', filteredExpenses, currentData.expenses);
 
-        const loanDetails = (t.type === 'loan' && t.originalLoanAmount) ? `<div class="loan-original-amount">סכום הלוואה: ₪${t.originalLoanAmount.toLocaleString('he-IL')}</div>` : '';
-        const dateNote = isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">יורד ב-${t.recurrence.dayOfMonth} לחודש</div>` : '';
-        
-        let tagsHTML = '';
-        const maxVisibleTags = 3; // Max tags to show inline
-        if (t.tags && t.tags.length > 0) {
-            const visibleTags = t.tags.slice(0, maxVisibleTags);
-            const hiddenTagsCount = t.tags.length - maxVisibleTags;
-
-            tagsHTML = visibleTags.map(tagId => {
-                const tag = getTagById(tagId);
-                if (!tag) return '';
-                return `<span class="transaction-tag" style="background-color: ${tag.color};">${sanitizeHTML(tag.name)}</span>`;
-            }).join('');
-
-            if (hiddenTagsCount > 0) {
-                const allTagIdsJson = JSON.stringify(t.tags);
-                // 🚀 שיפור: שימוש ב-data attributes במקום onclick
-                tagsHTML += `<button class="tag-overflow-btn" data-action="show-overflow-tags" data-tags='${allTagIdsJson}'>...+${hiddenTagsCount}</button>`;
-            }
-        }
-
-        let progressBar = '';
-        if (t.type === 'loan' && t.loanTotal) {
-            const percentage = (t.loanCurrent / t.loanTotal) * 100;
-            const amountPaid = t.amount * t.loanCurrent;
-            const isComplete = t.loanCurrent >= t.loanTotal;
-            progressBar = `
-                <div class="loan-progress ${t.isExpanded ? 'visible' : ''}">
-                    <div class="loan-progress-container"><div class="progress-bar-container"><div class="progress-bar-fill" style="width: ${percentage}%"></div></div>
-                        <div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div>
-                    </div>
-                    <button class="loan-next-payment-btn" data-action="next-loan" ${isComplete ? 'disabled' : ''}>
-                        ${isComplete ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'}
-                    </button>
-                </div>`;
-        }
-        
-        // 🚀 שיפור: הסרת כל ה-onclick והוספת data attributes
-        const itemHTML = `
-            <div class="transaction-item ${t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${t.completed ? 'completed' : ''}" 
-                 data-id="${t.id}" data-type="expense" ${t.type === 'loan' ? `data-action="toggle-loan"` : ''}>
-                <div class="transaction-info">
-                    <div class="transaction-check ${t.checked ? 'checked' : ''}" data-action="toggle-check"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
-                    <div class="transaction-details">
-                        <div class="transaction-text">
-                            <span>${sanitizeHTML(t.description)}</span>
-                            <div class="transaction-icons">${iconsHTML}</div>
-                        </div>
-                        <div class="transaction-tags-container">${tagsHTML}</div>
-                        ${dateNote}
-                        ${loanDetails}
-                    </div>
-                </div>
-                <div class="transaction-amount" data-action="edit-amount">
-                    <span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>
-                    <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, 'expense')">
-                </div>
-                <div class="item-controls">
-                    <div class="sort-buttons ${manualSortActive.expense ? 'visible' : ''}">
-                        <button class="sort-btn" data-action="move-up" ${originalIndex === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
-                        <button class="sort-btn" data-action="move-down" ${originalIndex === (currentData.expenses || []).length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
-                    </div>
-                    <div class="transaction-actions">
-                        <button class="action-btn edit" data-action="edit" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
-                        <button class="action-btn apply" data-action="apply" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
-                        <button class="action-btn delete" data-action="delete" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
-                    </div>
-                </div>
-            </div>
-        `;
-        return `<div class="transaction-wrapper">${itemHTML}${progressBar}</div>`;
-    }).join('');
-
+    // 3. עדכן סיכומים וכל השאר (הלוגיקה הזו נשארת זהה)
     // --- UPDATE TOTALS & SUMMARY ---
     const incomeTotal = filteredIncome.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const expenseTotal = filteredExpenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
@@ -1513,6 +1343,149 @@ function render() {
     const isDataEmpty = !currentData || ((currentData.income || []).length === 0 && (currentData.expenses || []).length === 0 && getExistingMonths().length <= 1);
     if (deleteAllBtn) deleteAllBtn.disabled = isDataEmpty;
     if (deleteMonthBtn) deleteMonthBtn.disabled = isDataEmpty;
+}
+
+// =======================================================
+// =========== פונקציה 2: סינון ומיון (מתוקן) ===========
+// =======================================================
+function getFilteredAndSortedData(type) {
+    const currentData = allData[currentMonth];
+    
+    // --- 🪲 התיקון כאן 🪲 ---
+    // קבע את שם המפתח הנכון במבנה הנתונים
+    const dataKey = (type === 'income') ? 'income' : 'expenses';
+    // -----------------------
+
+    const filter = (type === 'income') ? filterIncome : filterExpense;
+    
+    // השתמש במפתח הנכון כדי למשוך את הנתונים
+    let filteredList = [...(currentData[dataKey] || [])];
+
+    // לוגיקת סינון
+    if (filter !== 'all') {
+        if (filter === 'active') filteredList = filteredList.filter(t => t.checked);
+        else if (filter === 'inactive') filteredList = filteredList.filter(t => !t.checked);
+        else if (filter === 'regular') filteredList = filteredList.filter(t => t.recurrence?.isRecurring);
+        else filteredList = filteredList.filter(t => t.type === filter);
+    }
+
+    // לוגיקת מיון
+    const sortSetting = sortSettings[type];
+    if (sortSetting.mode === 'alpha') filteredList.sort((a, b) => a.description.localeCompare(b.description, 'he'));
+    else if (sortSetting.mode === 'amount') filteredList.sort((a, b) => sortSetting.direction === 'asc' ? a.amount - b.amount : b.amount - a.amount);
+    else if (sortSetting.mode === 'date') filteredList.sort((a, b) => (a.recurrence?.dayOfMonth || 99) - (b.recurrence?.dayOfMonth || 99));
+
+    return filteredList;
+}
+
+// =======================================================
+// =========== פונקציה 3: יצירת HTML (עזר) ===========
+// =======================================================
+function renderTransactionList(type, filteredData, allDataForIndices) {
+    if (filteredData.length === 0) {
+        return `<div class="empty-state">אין ${type === 'income' ? 'הכנסות' : 'הוצאות'} להצגה</div>`;
+    }
+
+const isManualActive = sortSettings[type].mode === 'manual' && manualSortActive[type]; // תיקון קטן: בדוק את המצב הספציפי
+
+    return filteredData.map(t => {
+        const originalIndex = allDataForIndices.findIndex(item => item.id === t.id);
+        const isRecurring = t.recurrence?.isRecurring;
+
+        // --- בניית אייקונים (עם התאמה לסוג) ---
+        let iconsHTML = '';
+        if (type === 'expense') {
+            if (t.type === 'loan') {
+                iconsHTML += `<svg class="system-icon icon-loan ${t.completed ? 'completed' : ''}" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>`;
+            } else if (t.type === 'variable') {
+                iconsHTML += `<svg class="system-icon icon-variable" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>`;
+            } else if (isRecurring) {
+                iconsHTML += `<svg class="system-icon icon-recurring" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>`;
+            }
+        } else { // type === 'income'
+            if (isRecurring) {
+                iconsHTML += `<svg class="system-icon icon-recurring" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>`;
+            }
+        }
+
+        // --- פרטי הלוואה ותאריך (עם התאמה לסוג) ---
+        const loanDetails = (type === 'expense' && t.type === 'loan' && t.originalLoanAmount) ? `<div class="loan-original-amount">סכום הלוואה: ₪${t.originalLoanAmount.toLocaleString('he-IL')}</div>` : '';
+        const dateNote = isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">${type === 'income' ? 'מתקבל' : 'יורד'} ב-${t.recurrence.dayOfMonth} לחודש</div>` : '';
+
+        // --- בניית תגים (זהה לשניהם) ---
+        let tagsHTML = '';
+        const maxVisibleTags = 3;
+        if (t.tags && t.tags.length > 0) {
+            const visibleTags = t.tags.slice(0, maxVisibleTags);
+            const hiddenTagsCount = t.tags.length - maxVisibleTags;
+            tagsHTML = visibleTags.map(tagId => {
+                const tag = getTagById(tagId);
+                if (!tag) return '';
+                return `<span class="transaction-tag" style="background-color: ${tag.color};">${sanitizeHTML(tag.name)}</span>`;
+            }).join('');
+            if (hiddenTagsCount > 0) {
+                const allTagIdsJson = JSON.stringify(t.tags);
+                tagsHTML += `<button class="tag-overflow-btn" data-action="show-overflow-tags" data-tags='${allTagIdsJson}'>...+${hiddenTagsCount}</button>`;
+            }
+        }
+
+        // --- סרגל התקדמות הלוואה (רק להוצאות) ---
+        let progressBar = '';
+        if (type === 'expense' && t.type === 'loan' && t.loanTotal) {
+            const percentage = (t.loanCurrent / t.loanTotal) * 100;
+            const amountPaid = t.amount * t.loanCurrent;
+            const isComplete = t.loanCurrent >= t.loanTotal;
+            progressBar = `
+                <div class="loan-progress ${t.isExpanded ? 'visible' : ''}">
+                    <div class="loan-progress-container"><div class="progress-bar-container"><div class="progress-bar-fill" style="width: ${percentage}%"></div></div>
+                        <div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div>
+                    </div>
+                    <button class="loan-next-payment-btn" data-action="next-loan" ${isComplete ? 'disabled' : ''}>
+                        ${isComplete ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'}
+                    </button>
+                </div>`;
+        }
+        
+        // --- תבנית HTML סופית (עם התאמה לסוג) ---
+        const itemHTML = `
+            <div class="transaction-item ${type === 'expense' && t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${t.completed ? 'completed' : ''}" 
+                 data-id="${t.id}" data-type="${type}" ${type === 'expense' && t.type === 'loan' ? `data-action="toggle-loan"` : ''}>
+                
+                <div class="transaction-info">
+                    <div class="transaction-check ${t.checked ? 'checked' : ''}" data-action="toggle-check"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+                    <div class="transaction-details">
+                        <div class="transaction-text">
+                            <span>${sanitizeHTML(t.description)}</span>
+                            <div class="transaction-icons">${iconsHTML}</div>
+                        </div>
+                        <div class="transaction-tags-container">${tagsHTML}</div>
+                        ${dateNote}
+                        ${loanDetails}
+                    </div>
+                </div>
+                
+                <div class="transaction-amount" data-action="edit-amount">
+                    <span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>
+                    <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, '${type}')">
+                </div>
+                
+                <div class="item-controls">
+                    <div class="sort-buttons ${isManualActive ? 'visible' : ''}">
+                        <button class="sort-btn" data-action="move-up" ${originalIndex === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
+                        <button class="sort-btn" data-action="move-down" ${originalIndex === allDataForIndices.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+                    </div>
+                    <div class="transaction-actions">
+                        <button class="action-btn edit" data-action="edit" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+                        <button class="action-btn apply" data-action="apply" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
+                        <button class="action-btn delete" data-action="delete" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        return `<div class="transaction-wrapper">${itemHTML}${progressBar}</div>`;
+
+    }).join('');
 }
 
 
