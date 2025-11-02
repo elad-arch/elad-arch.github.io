@@ -1,11 +1,4 @@
 // ================================================
-// =========== הגדרות סנכרון לענן ===========
-// ================================================
-const BIN_ID = '68fa8d59d0ea881f40b669cb';
-const MASTER_KEY = '$2a$10$2l31FVG9Qxn1DXIcxeq6hOQmZgnLls5mCIGRq2Czzfv6fNyEHQFfG';
-const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
-
-// ================================================
 // =========== הגדרות כלליות ===========
 // ================================================
 let allData = {};
@@ -65,21 +58,22 @@ function decryptData(encryptedData, password) {
 // ================================================
 async function loadFromCloud(password) {
     try {
-        const response = await fetch(`${BIN_URL}/latest`, {
-            method: 'GET',
-            headers: {
-                'X-Master-Key': MASTER_KEY
-            }
+        // 💡 שינוי: קוראים לפונקציית השרת שלנו ב-Vercel
+        const response = await fetch('/api/load-data', {
+            method: 'GET'
         });
+        // ----------------------------------------------------
+        
         if (!response.ok) throw new Error('Failed to fetch data');
-        const cloudData = await response.json();
+        const cloudData = await response.json(); 
+        
         if (Object.keys(cloudData.record).length === 0 || !cloudData.record.data) {
             return 'empty';
         }
         const decryptedData = decryptData(cloudData.record.data, password);
         if (decryptedData) {
-            allData = migrateData(decryptedData); // <<< תיקון
-            initializeTags(); // Ensure tags object exists after loading
+            allData = migrateData(decryptedData);
+            initializeTags();
             currentMonth = Object.keys(allData).filter(k => k !== 'tags').sort().pop() || getCurrentMonthKey();
             saveDataToLocal();
             loadData();
@@ -98,15 +92,18 @@ async function saveToCloud(password) {
         data: encryptData(allData, password)
     };
     if (!dataToSave.data) return 'encryption_failed';
+    
     try {
-        const response = await fetch(BIN_URL, {
-            method: 'PUT',
+        // 💡 שינוי: קוראים לפונקציית השרת שלנו ב-Vercel
+        const response = await fetch('/api/save-data', {
+            method: 'POST', 
             headers: {
-                'Content-Type': 'application/json',
-                'X-Master-Key': MASTER_KEY
+                'Content-Type': 'application/json' 
             },
-            body: JSON.stringify(dataToSave)
+            body: JSON.stringify(dataToSave) 
         });
+        // ----------------------------------------------------
+
         if (!response.ok) throw new Error('Failed to save data');
         return 'success';
     } catch (error) {
