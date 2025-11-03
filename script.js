@@ -300,33 +300,29 @@ function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
             const loansToCopy = allData[prevMonthKey].expenses.filter(t => t.type === 'loan' && !t.completed);
             
             loansToCopy.forEach(loan => {
-                // 1. יוצרים עותק של ההלוואה הקודמת
                 const newLoan = { ...loan };
-
-                // 2. נותנים לה ID חדש
                 newLoan.id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                 
-                // 3. 🔥 מקדמים את התשלום הנוכחי ב-1
+                // ודא של-ID המקורי יש ID גלובלי (למקרה שזו הלוואה ישנה מאוד)
+                if (!newLoan.globalLoanId) {
+                    newLoan.globalLoanId = `loan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                }
+                
                 newLoan.loanCurrent++;
 
-                // 4. בודקים אם התשלום הזה מסיים את ההלוואה
                 if (newLoan.loanCurrent >= newLoan.loanTotal) {
                     newLoan.completed = true;
-                    newLoan.checked = false; // הלוואה ששולמה לא צריכה להיות מסומנת
+                    newLoan.checked = false; 
                 } else {
-                    newLoan.completed = false; // מוודאים שהיא לא מסומנת כגמורה
-                    newLoan.checked = true;  // מסמנים אותה כתשלום פעיל לחודש זה
+                    newLoan.completed = false;
+                    newLoan.checked = true;
                 }
-
-                // 5. מוסיפים את ההלוואה המעודכנת לחודש החדש
                 allData[currentMonth].expenses.push(newLoan);
             });
         }
     }
 
-    // תיקון: עדכון ידני של שדה העו"ש לערך של החודש החדש
     document.getElementById('currentBalanceInput').value = allData[currentMonth].balance || 0;
-
     closeNewMonthModal();
     saveDataToLocal();
     render();
@@ -513,30 +509,49 @@ function populateMonthJumper() {
     });
 }
 
-// ================================================
-// =========== פונקציות שמירה וטעינה ===========
-// ================================================
-
 /**
  * פונקציית עזר לתיקון נתונים ישנים (Migration)
- * רצה על כל הנתונים ומוודאת שכל תנועה מכילה אובייקט 'recurrence' תקין
+ * כולל קישור חכם של הלוואות קיימות
  */
 function migrateData(data) {
     if (!data) return {};
-    Object.keys(data).forEach(key => {
-        if (key === 'tags' || !data[key]) return; // דלג על מפתח התגים
+    const loanGroups = new Map(); // Key: description, Value: globalLoanId
 
+    // שלב 1: סרוק את כל הנתונים, מצא הלוואות וקבץ אותן לפי שם
+    Object.keys(data).forEach(key => {
+        if (key === 'tags' || !data[key]) return;
+        if (data[key].expenses && Array.isArray(data[key].expenses)) {
+            data[key].expenses.forEach(t => {
+                if (t.type === 'loan') {
+                    if (!loanGroups.has(t.description)) {
+                        // זו פעם ראשונה שפגשנו את שם ההלוואה הזה.
+                        // אם כבר יש לה ID גלובלי (כי היא נוצרה אחרי השדרוג הקודם), נשתמש בו.
+                        // אם לא, נייצר לה אחד חדש.
+                        const newGlobalId = t.globalLoanId || `loan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                        loanGroups.set(t.description, newGlobalId);
+                        t.globalLoanId = newGlobalId;
+                    } else {
+                        // פגשנו כבר הלוואה עם השם הזה.
+                        // נצמיד לה את אותו ID גלובלי כדי לקשר ביניהן.
+                        t.globalLoanId = loanGroups.get(t.description);
+                    }
+                }
+            });
+        }
+    });
+
+    // שלב 2: בצע את שאר המיגרציות (כמו תיקון 'recurrence')
+    Object.keys(data).forEach(key => {
+        if (key === 'tags' || !data[key]) return;
         ['income', 'expenses'].forEach(type => {
             if (data[key][type] && Array.isArray(data[key][type])) {
                 data[key][type].forEach(t => {
-                    // 1. אם אובייקט 'recurrence' חסר לגמרי, ניצור ברירת מחדל
+                    // 1. אם אובייקט 'recurrence' חסר
                     if (!t.recurrence) {
                         t.recurrence = { isRecurring: false, dayOfMonth: null };
                     }
                     
-                    // 2. זה התיקון הקריטי לנתונים ישנים:
-                    // אם תנועה סומנה כקבועה אבל היום שלה הוא null (מבאג ה-NaN)
-                    // נבטל את הסימון שלה כקבועה כדי לתקן את הנתונים.
+                    // 2. תיקון לנתונים ישנים
                     if (t.recurrence.isRecurring && (t.recurrence.dayOfMonth === null || typeof t.recurrence.dayOfMonth === 'undefined')) {
                         t.recurrence.isRecurring = false;
                         t.recurrence.dayOfMonth = null;
@@ -1044,6 +1059,10 @@ function openModal(type, id = null) {
     // Reset tags
     currentTransactionTags = [];
     renderSelectedTags();
+    
+    // 💡 --- לוגיקה חדשה: נעילת שדה 'תשלום נוכחי' --- 💡
+    const loanCurrentInput = document.getElementById('loanCurrentInput');
+    loanCurrentInput.disabled = false; // אפס לפני כל פתיחה
 
     if (id) {
         const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
@@ -1062,6 +1081,9 @@ function openModal(type, id = null) {
             document.getElementById('loanOriginalAmountInput').value = transaction.originalLoanAmount || '';
             document.getElementById('loanTotalInput').value = transaction.loanTotal || '';
             document.getElementById('loanCurrentInput').value = transaction.loanCurrent || '';
+            
+            // 💡 --- נעל את השדה במצב עריכה --- 💡
+            loanCurrentInput.disabled = true;
         }
         
         if (transaction.recurrence && transaction.recurrence.isRecurring) {
@@ -1087,33 +1109,30 @@ function openModal(type, id = null) {
 
 function closeModal() {
     document.getElementById('transactionModal').classList.remove('active');
+    
+    // 💡 --- שחרר את נעילת השדה בסגירה --- 💡
+    document.getElementById('loanCurrentInput').disabled = false;
+    
     editingId = null;
     currentTransactionTags = []; // Clear tags on close
 }
 
-function saveTransaction() {
+async function saveTransaction() { // 💡 --- הפך ל-async --- 💡
     saveStateForUndo();
     const description = document.getElementById('descriptionInput').value.trim();
     const amount = parseFloat(document.getElementById('amountInput').value);
     const isRecurring = document.getElementById('recurrenceCheckbox').checked;
     
-    // --- התחלה של התיקון ---
-    // 1. קבל את הערך ונתח אותו
     let dayOfMonth = parseInt(document.getElementById('recurrenceDayInput').value, 10);
-    
-    // 2. ודא ש-NaN (משדה ריק או קלט שגוי) הופך ל-null
-    //    כדי שנוכל לבדוק אותו בצורה אמינה.
     if (isNaN(dayOfMonth)) {
         dayOfMonth = null;
     }
-    // --- סוף התיקון ---
-
+    
     if (!description || !amount || amount <= 0) {
         openConfirmModal('שגיאה', 'נא למלא תיאור וסכום חיובי.', closeConfirmModal);
         return;
     }
     
-    // עכשיו הבדיקה אמינה יותר כי אנחנו בודקים רק null או טווח
     if (isRecurring && (dayOfMonth === null || dayOfMonth < 1 || dayOfMonth > 31)) {
         openConfirmModal('שגיאה', 'יש להזין יום חוקי בחודש (1-31) עבור תנועה קבועה.', closeConfirmModal);
         return;
@@ -1125,11 +1144,9 @@ function saveTransaction() {
         type: selectedTransactionType,
         recurrence: {
             isRecurring: isRecurring,
-            // אם isRecurring נכון, dayOfMonth *חייב* להיות מספר תקין.
-            // אם isRecurring שגוי, נשמור null.
             dayOfMonth: isRecurring ? dayOfMonth : null
         },
-        tags: currentTransactionTags.map(tag => tag.id) // Save tag IDs
+        tags: currentTransactionTags.map(tag => tag.id)
     };
     
     if (transactionData.type === 'regular') {
@@ -1139,7 +1156,10 @@ function saveTransaction() {
     if (selectedTransactionType === 'loan') {
         const originalLoanAmount = parseFloat(document.getElementById('loanOriginalAmountInput').value);
         const loanTotal = parseInt(document.getElementById('loanTotalInput').value);
-        const loanCurrent = parseInt(document.getElementById('loanCurrentInput').value);
+        
+        // 💡 קרא את התשלום הנוכחי מהשדה, גם אם הוא נעול
+        const loanCurrent = parseInt(document.getElementById('loanCurrentInput').value); 
+        
         if (!originalLoanAmount || !loanTotal || isNaN(loanCurrent) || originalLoanAmount <= 0 || loanTotal < 1 || loanCurrent < 0 || loanCurrent > loanTotal || amount > originalLoanAmount) {
             openConfirmModal('שגיאה', 'נא למלא את כל פרטי ההלוואה באופן תקין.', closeConfirmModal);
             return;
@@ -1155,23 +1175,72 @@ function saveTransaction() {
     const list = currentType === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
 
     if (editingId) {
+        // --- מצב עריכה ---
         const indexToUpdate = list.findIndex(t => t.id == editingId);
         if (indexToUpdate > -1) {
             const existingTransaction = list[indexToUpdate];
-            list[indexToUpdate] = { ...existingTransaction, ...transactionData };
-            if (transactionData.type === 'loan') {
-                list[indexToUpdate].checked = !transactionData.completed;
+            const updatedTransaction = { ...existingTransaction, ...transactionData };
+            
+            // 💡 --- הוספת אזהרה גלובלית --- 💡
+            if (updatedTransaction.type === 'loan') {
+                const changes = [];
+                if (existingTransaction.description !== updatedTransaction.description) changes.push('תיאור');
+                if (existingTransaction.originalLoanAmount !== updatedTransaction.originalLoanAmount) changes.push('סכום מקורי');
+                if (existingTransaction.loanTotal !== updatedTransaction.loanTotal) changes.push('מספר תשלומים');
+                
+                // אם הסכום החודשי השתנה, זה *לא* גלובלי
+                
+                if (changes.length > 0) {
+                    const confirmed = await showAsyncConfirm(
+                        'עדכון גלובלי',
+                        `שינוי זה (${changes.join(', ')}) יחול על הלוואה זו <b>בכל החודשים</b>. האם להמשיך?`
+                    );
+                    if (!confirmed) {
+                        closeModal(); // בטל את השמירה
+                        return; // עצור את הפונקציה
+                    }
+                }
+            }
+            // 💡 --- סוף האזהרה --- 💡
+
+            if (updatedTransaction.type === 'loan') {
+                updatedTransaction.checked = !updatedTransaction.completed;
+            }
+            
+            list[indexToUpdate] = updatedTransaction; // עדכן את התנועה הנוכחית
+
+            // 💡 --- סנכרון גלובלי להלוואות (קיים מהקודם) --- 💡
+            if (updatedTransaction.type === 'loan' && updatedTransaction.globalLoanId) {
+                const globalId = updatedTransaction.globalLoanId;
+                
+                getExistingMonths().forEach(monthKey => {
+                    if (monthKey === currentMonth) return; 
+                    const monthData = allData[monthKey];
+                    if (monthData.expenses) {
+                        monthData.expenses.forEach(expense => {
+                            if (expense.type === 'loan' && expense.globalLoanId === globalId) {
+                                expense.description = updatedTransaction.description;
+                                expense.originalLoanAmount = updatedTransaction.originalLoanAmount;
+                                expense.loanTotal = updatedTransaction.loanTotal;
+                            }
+                        });
+                    }
+                });
             }
         }
     } else {
+        // --- מצב יצירה חדשה ---
         const newTransaction = {
             ...transactionData,
             id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             checked: true
         };
+        
         if (newTransaction.type === 'loan') {
             newTransaction.checked = !newTransaction.completed;
+            newTransaction.globalLoanId = `loan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         }
+        
         list.push(newTransaction);
     }
 
@@ -1180,13 +1249,49 @@ function saveTransaction() {
     closeModal();
 }
 
-function deleteTransaction(event, type, id) {
+async function deleteTransaction(event, type, id) { // 💡 --- הפך ל-async --- 💡
     event.stopPropagation();
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     const transaction = list.find(t => t.id == id);
     if (!transaction) return;
+
+    // 💡 --- לוגיקת מחיקה גלובלית --- 💡
+    if (transaction.type === 'loan' && transaction.globalLoanId) {
+        const confirmed = await showAsyncConfirm(
+            'מחיקה גלובלית',
+            `זוהי תנועת הלוואה. המחיקה תסיר את <b>"${sanitizeHTML(transaction.description)}"</b> <u>מכל החודשים</u>. האם למחוק לצמיתות?`
+        );
+
+        if (confirmed) {
+            saveStateForUndo(); // שמור מצב לפני המחיקה הגלובלית
+            const globalId = transaction.globalLoanId;
+            
+            // סרוק את כל החודשים ומחק כל מופע של ההלוואה
+            getExistingMonths().forEach(monthKey => {
+                const monthData = allData[monthKey];
+                if (monthData.expenses) {
+                    monthData.expenses = monthData.expenses.filter(expense => 
+                        expense.globalLoanId !== globalId
+                    );
+                }
+            });
+            
+            saveDataToLocal();
+            render();
+        }
+        // הפונקציה showAsyncConfirm סוגרת את חלון האישור
+        return; // עצור כאן, סיימנו
+    }
+    // 💡 --- סוף לוגיקת מחיקה גלובלית --- 💡
+
+
+    // --- לוגיקת מחיקה רגילה (עבור כל תנועה שאינה הלוואה) ---
     const message = `האם למחוק את <b>"${sanitizeHTML(transaction.description)}"</b> בסך <b>₪${transaction.amount.toLocaleString('he-IL')}</b>?`;
-    openConfirmModal('אישור מחיקת תנועה', message, () => {
+    
+    // נשתמש בפונקציה החדשה גם כאן לאחידות
+    const confirmed = await showAsyncConfirm('אישור מחיקת תנועה', message);
+    
+    if (confirmed) {
         saveStateForUndo();
         const indexToDelete = list.findIndex(t => t.id == id);
         if (indexToDelete > -1) {
@@ -1194,8 +1299,7 @@ function deleteTransaction(event, type, id) {
         }
         saveDataToLocal();
         render();
-        closeConfirmModal();
-    });
+    }
 }
 
 function toggleCheck(event, type, id) {
@@ -1878,6 +1982,21 @@ function openConfirmModal(title, text, onConfirm, onCancel = closeConfirmModal) 
 
 function closeConfirmModal() {
     document.getElementById('confirmModal').classList.remove('active');
+}
+
+/**
+ * פונקציית עזר לחלון אישור אסינכרוני
+ * מחזירה Promise שממתין לתשובת המשתמש (true/false)
+ */
+function showAsyncConfirm(title, text) {
+    return new Promise((resolve) => {
+        openConfirmModal(
+            title,
+            text,
+            () => { closeConfirmModal(); resolve(true); }, // אם המשתמש לחץ "אשר"
+            () => { closeConfirmModal(); resolve(false); } // אם המשתמש לחץ "ביטול"
+        );
+    });
 }
 
 function setupBalanceControls() {
