@@ -1117,7 +1117,7 @@ function closeModal() {
     currentTransactionTags = []; // Clear tags on close
 }
 
-async function saveTransaction() { // 💡 --- הפך ל-async --- 💡
+async function saveTransaction() {
     saveStateForUndo();
     const description = document.getElementById('descriptionInput').value.trim();
     const amount = parseFloat(document.getElementById('amountInput').value);
@@ -1181,14 +1181,11 @@ async function saveTransaction() { // 💡 --- הפך ל-async --- 💡
             const existingTransaction = list[indexToUpdate];
             const updatedTransaction = { ...existingTransaction, ...transactionData };
             
-            // 💡 --- הוספת אזהרה גלובלית --- 💡
             if (updatedTransaction.type === 'loan') {
                 const changes = [];
                 if (existingTransaction.description !== updatedTransaction.description) changes.push('תיאור');
                 if (existingTransaction.originalLoanAmount !== updatedTransaction.originalLoanAmount) changes.push('סכום מקורי');
                 if (existingTransaction.loanTotal !== updatedTransaction.loanTotal) changes.push('מספר תשלומים');
-                
-                // אם הסכום החודשי השתנה, זה *לא* גלובלי
                 
                 if (changes.length > 0) {
                     const confirmed = await showAsyncConfirm(
@@ -1196,12 +1193,11 @@ async function saveTransaction() { // 💡 --- הפך ל-async --- 💡
                         `שינוי זה (${changes.join(', ')}) יחול על הלוואה זו <b>בכל החודשים</b>. האם להמשיך?`
                     );
                     if (!confirmed) {
-                        closeModal(); // בטל את השמירה
-                        return; // עצור את הפונקציה
+                        closeModal();
+                        return;
                     }
                 }
             }
-            // 💡 --- סוף האזהרה --- 💡
 
             if (updatedTransaction.type === 'loan') {
                 updatedTransaction.checked = !updatedTransaction.completed;
@@ -1209,7 +1205,7 @@ async function saveTransaction() { // 💡 --- הפך ל-async --- 💡
             
             list[indexToUpdate] = updatedTransaction; // עדכן את התנועה הנוכחית
 
-            // 💡 --- סנכרון גלובלי להלוואות (קיים מהקודם) --- 💡
+            // סנכרון גלובלי להלוואות (קיים מהקודם)
             if (updatedTransaction.type === 'loan' && updatedTransaction.globalLoanId) {
                 const globalId = updatedTransaction.globalLoanId;
                 
@@ -1226,6 +1222,9 @@ async function saveTransaction() { // 💡 --- הפך ל-async --- 💡
                         });
                     }
                 });
+                
+                // 💡 --- הפעל את השרשור קדימה --- 💡
+                cascadeLoanUpdates(updatedTransaction, currentMonth);
             }
         }
     } else {
@@ -1239,9 +1238,16 @@ async function saveTransaction() { // 💡 --- הפך ל-async --- 💡
         if (newTransaction.type === 'loan') {
             newTransaction.checked = !newTransaction.completed;
             newTransaction.globalLoanId = `loan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            // 💡 --- הפעל את השרשור קדימה --- 💡
+            // שים לב: אנחנו מוסיפים את ההלוואה לרשימה קודם
+            list.push(newTransaction);
+            // ורק אז מפעילים את השרשור
+            cascadeLoanUpdates(newTransaction, currentMonth);
+
+        } else {
+             list.push(newTransaction);
         }
-        
-        list.push(newTransaction);
     }
 
     saveDataToLocal();
@@ -2347,4 +2353,69 @@ function populateFilterDropdown(type) {
             setFilter(type, option.dataset.filter);
         });
     });
+}
+
+/**
+ * "שרשור" הלוואות קדימה
+ * מקבל הלוואת מקור ומעדכן/יוצר אותה בכל החודשים העתידיים שכבר קיימים
+ */
+function cascadeLoanUpdates(sourceLoan, sourceMonthKey) {
+    if (!sourceLoan || sourceLoan.type !== 'loan' || !sourceLoan.globalLoanId) {
+        return; // זו לא הלוואה חוקית עם ID גלובלי
+    }
+
+    const globalId = sourceLoan.globalLoanId;
+    const allMonthKeys = getExistingMonths();
+    const startIndex = allMonthKeys.indexOf(sourceMonthKey);
+
+    if (startIndex === -1) return; // לא מצאנו את חודש המקור? מוזר
+
+    // רץ על כל החודשים *אחרי* חודש המקור
+    for (let i = startIndex + 1; i < allMonthKeys.length; i++) {
+        const futureMonthKey = allMonthKeys[i];
+        const futureMonthData = allData[futureMonthKey];
+        
+        // 1. חשב את מספר התשלום החדש
+        // (i - startIndex) = מרחק מחודש המקור (1, 2, 3...)
+        const paymentNumber = sourceLoan.loanCurrent + (i - startIndex);
+        
+        // 2. בדוק אם ההלוואה הושלמה
+        const isCompleted = paymentNumber >= sourceLoan.loanTotal;
+
+        // 3. חפש אם כבר קיים עותק בחודש העתידי
+        let targetLoan = futureMonthData.expenses.find(t => t.globalLoanId === globalId);
+
+        if (targetLoan) {
+            // --- מצאנו הלוואה קיימת, עדכן אותה ---
+            
+            // עדכן נתונים "גלובליים" מהמקור
+            targetLoan.description = sourceLoan.description;
+            targetLoan.amount = sourceLoan.amount;
+            targetLoan.originalLoanAmount = sourceLoan.originalLoanAmount;
+            targetLoan.loanTotal = sourceLoan.loanTotal;
+            
+            // עדכן נתונים "מקומיים" מחושבים
+            targetLoan.loanCurrent = paymentNumber;
+            targetLoan.completed = isCompleted;
+            targetLoan.checked = !isCompleted; // בטל V אם הושלם
+
+        } else if (!isCompleted) {
+            // --- לא מצאנו הלוואה, והיא עדיין לא הושלמה ---
+            // --- ניצור עותק חדש בחודש העתידי ---
+            
+            const newLoan = { ...sourceLoan }; // צור עותק מהמקור
+            
+            newLoan.id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            newLoan.globalLoanId = globalId; // שמור על ה-ID הגלובלי
+            
+            // עדכן נתונים מחושבים
+            newLoan.loanCurrent = paymentNumber;
+            newLoan.completed = false;
+            newLoan.checked = true; // תנועה חדשה צריכה להיות פעילה
+
+            futureMonthData.expenses.push(newLoan);
+        }
+        // אם לא מצאנו (targetLoan = null) והיא כן הושלמה (isCompleted = true)
+        // -> אל תעשה כלום. אין צורך ליצור הלוואה שכבר הושלמה.
+    }
 }
