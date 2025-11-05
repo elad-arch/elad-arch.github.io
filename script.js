@@ -88,6 +88,9 @@ async function loadFromCloud(password) {
 }
 
 async function saveToCloud(password) {
+
+    saveDataToLocal();
+    
     const dataToSave = {
         data: encryptData(allData, password)
     };
@@ -312,7 +315,7 @@ function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
 
                 if (newLoan.loanCurrent >= newLoan.loanTotal) {
                     newLoan.completed = true;
-                    newLoan.checked = false; 
+                    newLoan.checked = true; 
                 } else {
                     newLoan.completed = false;
                     newLoan.checked = true;
@@ -574,7 +577,9 @@ function saveDataToLocal() {
 function loadData() {
     const savedData = localStorage.getItem('budgetData');
     let parsedData = savedData ? JSON.parse(savedData) : {};
-    allData = migrateData(parsedData); // <<< תיקון
+    allData = migrateData(parsedData);
+
+    if (!allData.settings) allData.settings = {}; // אתחול אובייקט הגדרות
     
     initializeTags(); // Ensure tags object exists
 
@@ -872,21 +877,6 @@ function moveItem(event, type, id, direction) {
     }
     saveDataToLocal();
     render();
-}
-
-function nextLoanPayment(event, type, id) {
-    saveStateForUndo();
-    event.stopPropagation();
-    const transaction = allData[currentMonth].expenses.find(t => t.id == id);
-    if (transaction && transaction.type === 'loan' && transaction.loanCurrent < transaction.loanTotal) {
-        transaction.loanCurrent++;
-        transaction.isExpanded = true;
-        if (transaction.loanCurrent >= transaction.loanTotal) {
-            transaction.completed = true;
-        }
-        saveDataToLocal();
-        render();
-    }
 }
 
 function toggleFilter(type) {
@@ -1217,7 +1207,7 @@ async function saveTransaction() {
             }
 
             if (updatedTransaction.type === 'loan') {
-                updatedTransaction.checked = !updatedTransaction.completed;
+                updatedTransaction.checked = true;
             }
             
             list[indexToUpdate] = updatedTransaction; // עדכן את התנועה הנוכחית
@@ -1255,7 +1245,7 @@ async function saveTransaction() {
         };
         
         if (newTransaction.type === 'loan') {
-            newTransaction.checked = !newTransaction.completed;
+            newTransaction.checked = true;
             newTransaction.globalLoanId = `loan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             
             list.push(newTransaction);
@@ -1615,9 +1605,6 @@ function renderTransactionList(type, filteredData, allDataForIndices) {
                     <div class="loan-progress-container"><div class="progress-bar-container"><div class="progress-bar-fill" style="width: ${percentage}%"></div></div>
                         <div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div>
                     </div>
-                    <button class="loan-next-payment-btn" data-action="next-loan" ${isComplete ? 'disabled' : ''}>
-                        ${isComplete ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'}
-                    </button>
                 </div>`;
         }
         
@@ -1897,9 +1884,6 @@ function handleListClick(event) {
                 break;
             case 'move-down':
                 moveItem(event, type, id, 'down');
-                break;
-            case 'next-loan': // <-- התיקון כאן, הכפתור הזה יזוהה עכשיו
-                nextLoanPayment(event, type, id);
                 break;
             case 'show-overflow-tags':
                 try {
@@ -2419,7 +2403,7 @@ function cascadeLoanUpdates(sourceLoan, sourceMonthKey) {
             // עדכן נתונים "מקומיים" מחושבים
             targetLoan.loanCurrent = paymentNumber;
             targetLoan.completed = isCompleted;
-            targetLoan.checked = !isCompleted; 
+            targetLoan.checked = true; 
 
         } else if (!isCompleted) {
             // --- לא מצאנו הלוואה, והיא עדיין לא הושלמה ---
@@ -2458,7 +2442,8 @@ function openShortfallModal() {
     calcFinalBalanceEl.dataset.cleanValue = finalBalanceValue; // שמור ערך נקי לחישובים
 
     // 3. טען את מסגרת האשראי השמורה מ-localStorage
-    const savedLimit = localStorage.getItem('overdraftLimit');
+    const savedLimit = allData.settings.overdraftLimit || localStorage.getItem('overdraftLimit');
+
     const limitInput = document.getElementById('overdraftLimitInput');
     
     // 💡 תיקון: טען תמיד את הערך החיובי (כי המינוס קבוע)
@@ -2494,6 +2479,8 @@ function calculateShortfall() {
     
     // 2. שמור את המסגרת החיובית לעתיד
     localStorage.setItem('overdraftLimit', positiveLimit);
+
+    allData.settings.overdraftLimit = positiveLimit; // שמירה גם לסנכרון ענן
 
     // 💡 --- התיקון המרכזי --- 💡
     // הפוך את המסגרת לשלילית לצורך החישוב
