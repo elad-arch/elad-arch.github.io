@@ -222,7 +222,9 @@ function getCurrentMonthKey() {
 }
 
 function getExistingMonths() {
-    return Object.keys(allData).filter(key => key !== 'tags').sort();
+    return Object.keys(allData)
+        .filter(key => key !== 'tags' && key !== 'settings') // 💡 התיקון: סנן גם 'settings'
+        .sort();
 }
 
 function updateMonthDisplay() {
@@ -723,8 +725,14 @@ function updateSummary() {
 }
 
 function updateLoansSummary() {
+    const loansContent = document.getElementById('loansSummaryContent');
+    const noLoansMessage = document.getElementById('noLoansMessage');
+
+    // --- חלק 1: נתונים גלובליים (סריקת כל החודשים) ---
+    // משמש לחישוב "סך כל ההלוואות" ו"יתרה לתשלום"
     const latestLoansMap = new Map();
     const allMonthKeys = getExistingMonths();
+    
     allMonthKeys.forEach(monthKey => {
         const monthData = allData[monthKey];
         if (monthData && monthData.expenses) {
@@ -734,10 +742,26 @@ function updateLoansSummary() {
             });
         }
     });
-    const loanTransactions = Array.from(latestLoansMap.values());
-    const loansContent = document.getElementById('loansSummaryContent');
-    const noLoansMessage = document.getElementById('noLoansMessage');
-    if (loanTransactions.length === 0) {
+    // זוהי רשימה של המצב העדכני ביותר של *כל* הלוואה שאי פעם הייתה קיימת
+    const allLoanTransactions = Array.from(latestLoansMap.values());
+
+    // --- 💡 חלק 2: נתוני החודש האחרון (התיקון כאן) ---
+    // משמש לחישוב "הלוואות פעילות" ו"תשלום חודשי"
+    
+    let activeLoansInLatestMonth = [];
+    if (allMonthKeys.length > 0) {
+        // 1. מצא את המפתח של החודש האחרון
+        const latestMonthKey = allMonthKeys[allMonthKeys.length - 1];
+        // 2. קבל את הנתונים רק שלו
+        const latestMonthData = allData[latestMonthKey] || { expenses: [] };
+        // 3. סנן את ההלוואות רק מהחודש האחרון
+        activeLoansInLatestMonth = (latestMonthData.expenses || []).filter(t => t.type === 'loan');
+    }
+
+    // --- חלק 3: הצגת הנתונים ---
+    
+    // אם אין הלוואות בכלל (בשום חודש), הצג הודעה
+    if (allLoanTransactions.length === 0) {
         if (loansContent) loansContent.style.display = 'none';
         if (noLoansMessage) noLoansMessage.style.display = 'block';
         document.getElementById('totalLoansCount').textContent = 0;
@@ -747,17 +771,27 @@ function updateLoansSummary() {
         document.getElementById('loansCollapsedSummary').innerHTML = `<span class="summary-label">אין הלוואות פעילות</span>`;
         return;
     }
+
     if (loansContent) loansContent.style.display = 'block';
     if (noLoansMessage) noLoansMessage.style.display = 'none';
-    const activeLoans = loanTransactions.filter(t => !t.completed && t.loanCurrent < t.loanTotal);
-    const activeLoansCount = activeLoans.length;
-    const monthlyPayment = activeLoans.reduce((sum, t) => sum + t.amount, 0);
-    const totalAmount = loanTransactions.reduce((sum, t) => sum + (t.originalLoanAmount || 0), 0);
-    const remainingBalance = activeLoans.reduce((sum, t) => {
+
+    // חישוב "פעילות" על בסיס החודש האחרון במערכת
+    const activeLoansCount = activeLoansInLatestMonth.length;
+    const monthlyPayment = activeLoansInLatestMonth.reduce((sum, t) => sum + t.amount, 0);
+
+    // חישוב "גלובלי" על בסיס כל הנתונים
+    const totalAmount = allLoanTransactions.reduce((sum, t) => sum + (t.originalLoanAmount || 0), 0);
+    
+    // סנן הלוואות גלובליות שעדיין לא הסתיימו
+    const activeGlobalLoans = allLoanTransactions.filter(t => t.loanCurrent < t.loanTotal);
+    
+    const remainingBalance = activeGlobalLoans.reduce((sum, t) => {
         const paidAmount = t.amount * t.loanCurrent;
         const remaining = (t.originalLoanAmount || 0) - paidAmount;
         return sum + (remaining > 0 ? remaining : 0);
     }, 0);
+
+    // עדכון ה-DOM
     document.getElementById('totalLoansCount').textContent = activeLoansCount;
     document.getElementById('monthlyLoanPayment').textContent = `₪${monthlyPayment.toLocaleString('he-IL', { minimumFractionDigits: 2 })}`;
     document.getElementById('totalLoanAmount').textContent = `₪${totalAmount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}`;
