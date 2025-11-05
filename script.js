@@ -1972,7 +1972,8 @@ document.addEventListener('DOMContentLoaded', () => {
             closeNewMonthModal();
             closeEditMonthModal();
             closeTagsManagementModal();
-            closeOverflowTagsModal(); // Added
+            closeOverflowTagsModal();
+            closeShortfallModal();
         }
     });
     document.addEventListener('click', (e) => {
@@ -2436,5 +2437,83 @@ function cascadeLoanUpdates(sourceLoan, sourceMonthKey) {
 
             futureMonthData.expenses.push(newLoan);
         }
+    }
+}
+
+// ================================================
+// =========== מחשבון חריגה ===========
+// ================================================
+/**
+ * פותח את חלון מחשבון החריגה
+ */
+function openShortfallModal() {
+    // 1. קבל את העו"ש הסופי הצפוי מהדף הראשי
+    const finalBalanceEl = document.getElementById('finalBalance');
+    const finalBalanceValue = parseFloat(finalBalanceEl.textContent.replace(/[^\d.-]/g, '')) || 0;
+    
+    // 2. עדכן את הערך בחלון
+    const calcFinalBalanceEl = document.getElementById('calcFinalBalance');
+    calcFinalBalanceEl.textContent = finalBalanceEl.textContent; 
+    calcFinalBalanceEl.className = finalBalanceEl.className;
+    calcFinalBalanceEl.dataset.cleanValue = finalBalanceValue; // שמור ערך נקי לחישובים
+
+    // 3. טען את מסגרת האשראי השמורה מ-localStorage
+    const savedLimit = localStorage.getItem('overdraftLimit');
+    const limitInput = document.getElementById('overdraftLimitInput');
+    
+    // 💡 תיקון: טען תמיד את הערך החיובי (כי המינוס קבוע)
+    // Math.abs() הופך -5000 (ישן) ל- 5000 (חדש)
+    limitInput.value = savedLimit ? Math.abs(parseFloat(savedLimit)) : 0; 
+
+    // 4. הפעל את החישוב בפעם הראשונה
+    calculateShortfall();
+    
+    // 5. פתח את החלון
+    document.getElementById('shortfallModal').classList.add('active');
+    limitInput.focus();
+    limitInput.select();
+}
+
+/**
+ * סוגר את חלון מחשבון החריגה (ללא שינוי)
+ */
+function closeShortfallModal() {
+    document.getElementById('shortfallModal').classList.remove('active');
+}
+
+/**
+ * 💡 מבצע את החישוב החדש (מינוס אוטומטי) 💡
+ */
+function calculateShortfall() {
+    // 1. קרא את הערכים
+    // 💡 תיקון: קרא את הערך החיובי מהשדה
+    const positiveLimit = parseFloat(document.getElementById('overdraftLimitInput').value.replace(/,/g, '')) || 0;
+    
+    // 💡 תיקון: קרא את העו"ש הסופי הנקי מה"תווית הנסתרת"
+    const finalBalance = parseFloat(document.getElementById('calcFinalBalance').dataset.cleanValue) || 0;
+    
+    // 2. שמור את המסגרת החיובית לעתיד
+    localStorage.setItem('overdraftLimit', positiveLimit);
+
+    // 💡 --- התיקון המרכזי --- 💡
+    // הפוך את המסגרת לשלילית לצורך החישוב
+    const limit = -Math.abs(positiveLimit); // (לדוגמה: -5000)
+
+    // 3. חשב את החריגה (לדוגמה: limit = -5000, finalBalance = -9270)
+    // החישוב: (-5000) - (-9270) = 4270
+    let overdraftAmount = limit - finalBalance;
+    
+    // 4. הצג את התוצאה
+    const resultText = document.getElementById('overdraftAmountText');
+
+    if (overdraftAmount > 0) {
+        // --- מצב חריגה (אדום) ---
+        resultText.className = "summary-block-value negative"; // צבע אדום
+        resultText.textContent = `₪${overdraftAmount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}`;
+        
+    } else {
+        // --- מצב תקין (ירוק) ---
+        resultText.className = "summary-block-value positive"; // צבע ירוק
+        resultText.textContent = "₪0.00"; // הצג 0, כי אין חריגה
     }
 }
