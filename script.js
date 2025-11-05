@@ -1060,9 +1060,12 @@ function openModal(type, id = null) {
     currentTransactionTags = [];
     renderSelectedTags();
     
-    // 💡 --- לוגיקה חדשה: נעילת שדה 'תשלום נוכחי' --- 💡
     const loanCurrentInput = document.getElementById('loanCurrentInput');
-    loanCurrentInput.disabled = false; // אפס לפני כל פתיחה
+    loanCurrentInput.disabled = false; 
+
+    // 💡 אפס את שדה יום החיוב
+    const loanBillingDayInput = document.getElementById('loanBillingDayInput');
+    loanBillingDayInput.value = '';
 
     if (id) {
         const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
@@ -1081,9 +1084,10 @@ function openModal(type, id = null) {
             document.getElementById('loanOriginalAmountInput').value = transaction.originalLoanAmount || '';
             document.getElementById('loanTotalInput').value = transaction.loanTotal || '';
             document.getElementById('loanCurrentInput').value = transaction.loanCurrent || '';
-            
-            // 💡 --- נעל את השדה במצב עריכה --- 💡
             loanCurrentInput.disabled = true;
+            
+            // 💡 מלא את שדה יום החיוב
+            loanBillingDayInput.value = transaction.loanBillingDay || '';
         }
         
         if (transaction.recurrence && transaction.recurrence.isRecurring) {
@@ -1099,7 +1103,7 @@ function openModal(type, id = null) {
 
     } else {
         title.textContent = type === 'income' ? 'הוספת הכנסה' : 'הוספת הוצאה';
-        ['loanOriginalAmountInput', 'loanTotalInput', 'loanCurrentInput'].forEach(id => document.getElementById(id).value = '');
+        ['loanOriginalAmountInput', 'loanTotalInput', 'loanCurrentInput', 'loanBillingDayInput'].forEach(id => document.getElementById(id).value = '');
         selectTransactionType('onetime');
     }
 
@@ -1156,10 +1160,17 @@ async function saveTransaction() {
     if (selectedTransactionType === 'loan') {
         const originalLoanAmount = parseFloat(document.getElementById('loanOriginalAmountInput').value);
         const loanTotal = parseInt(document.getElementById('loanTotalInput').value);
+        const loanCurrent = parseInt(document.getElementById('loanCurrentInput').value);
         
-        // 💡 קרא את התשלום הנוכחי מהשדה, גם אם הוא נעול
-        const loanCurrent = parseInt(document.getElementById('loanCurrentInput').value); 
+        // 💡 קרא את שדה יום החיוב
+        const loanBillingDay = parseInt(document.getElementById('loanBillingDayInput').value, 10);
         
+        // 💡 ודא שהוזן יום תקין
+        if (isNaN(loanBillingDay) || loanBillingDay < 1 || loanBillingDay > 31) {
+             openConfirmModal('שגיאה', 'נא להזין יום חיוב חוקי (1-31) עבור ההלוואה.', closeConfirmModal);
+             return;
+        }
+
         if (!originalLoanAmount || !loanTotal || isNaN(loanCurrent) || originalLoanAmount <= 0 || loanTotal < 1 || loanCurrent < 0 || loanCurrent > loanTotal || amount > originalLoanAmount) {
             openConfirmModal('שגיאה', 'נא למלא את כל פרטי ההלוואה באופן תקין.', closeConfirmModal);
             return;
@@ -1170,6 +1181,9 @@ async function saveTransaction() {
         transactionData.completed = transactionData.loanCurrent >= transactionData.loanTotal;
         transactionData.type = 'loan';
         transactionData.recurrence.isRecurring = false;
+        
+        // 💡 הוסף את יום החיוב לנתונים
+        transactionData.loanBillingDay = loanBillingDay;
     }
 
     const list = currentType === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
@@ -1187,6 +1201,9 @@ async function saveTransaction() {
                 if (existingTransaction.originalLoanAmount !== updatedTransaction.originalLoanAmount) changes.push('סכום מקורי');
                 if (existingTransaction.loanTotal !== updatedTransaction.loanTotal) changes.push('מספר תשלומים');
                 
+                // 💡 הוסף את יום החיוב לבדיקת השינויים
+                if (existingTransaction.loanBillingDay !== updatedTransaction.loanBillingDay) changes.push('יום חיוב');
+
                 if (changes.length > 0) {
                     const confirmed = await showAsyncConfirm(
                         'עדכון גלובלי',
@@ -1218,12 +1235,14 @@ async function saveTransaction() {
                                 expense.description = updatedTransaction.description;
                                 expense.originalLoanAmount = updatedTransaction.originalLoanAmount;
                                 expense.loanTotal = updatedTransaction.loanTotal;
+                                
+                                // 💡 סנכרן את יום החיוב גלובלית
+                                expense.loanBillingDay = updatedTransaction.loanBillingDay;
                             }
                         });
                     }
                 });
                 
-                // 💡 --- הפעל את השרשור קדימה --- 💡
                 cascadeLoanUpdates(updatedTransaction, currentMonth);
             }
         }
@@ -1239,10 +1258,7 @@ async function saveTransaction() {
             newTransaction.checked = !newTransaction.completed;
             newTransaction.globalLoanId = `loan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             
-            // 💡 --- הפעל את השרשור קדימה --- 💡
-            // שים לב: אנחנו מוסיפים את ההלוואה לרשימה קודם
             list.push(newTransaction);
-            // ורק אז מפעילים את השרשור
             cascadeLoanUpdates(newTransaction, currentMonth);
 
         } else {
@@ -1541,7 +1557,7 @@ function renderTransactionList(type, filteredData, allDataForIndices) {
         return `<div class="empty-state">אין ${type === 'income' ? 'הכנסות' : 'הוצאות'} להצגה</div>`;
     }
 
-const isManualActive = sortSettings[type].mode === 'manual' && manualSortActive[type]; // תיקון קטן: בדוק את המצב הספציפי
+    const isManualActive = sortSettings[type].mode === 'manual' && manualSortActive[type];
 
     return filteredData.map(t => {
         const originalIndex = allDataForIndices.findIndex(item => item.id === t.id);
@@ -1564,7 +1580,11 @@ const isManualActive = sortSettings[type].mode === 'manual' && manualSortActive[
         }
 
         // --- פרטי הלוואה ותאריך (עם התאמה לסוג) ---
+        
+        // 💡 הוספנו את `billingDateNote`
+        const billingDateNote = (t.type === 'loan' && t.loanBillingDay) ? `<div class="transaction-date-note">יורד ב-${t.loanBillingDay} לחודש</div>` : '';        
         const loanDetails = (type === 'expense' && t.type === 'loan' && t.originalLoanAmount) ? `<div class="loan-original-amount">סכום הלוואה: ₪${t.originalLoanAmount.toLocaleString('he-IL')}</div>` : '';
+        
         const dateNote = isRecurring && t.recurrence.dayOfMonth ? `<div class="transaction-date-note">${type === 'income' ? 'מתקבל' : 'יורד'} ב-${t.recurrence.dayOfMonth} לחודש</div>` : '';
 
         // --- בניית תגים (זהה לשניהם) ---
@@ -1615,6 +1635,9 @@ const isManualActive = sortSettings[type].mode === 'manual' && manualSortActive[
                         </div>
                         <div class="transaction-tags-container">${tagsHTML}</div>
                         ${dateNote}
+                        
+                        ${billingDateNote}
+                        
                         ${loanDetails}
                     </div>
                 </div>
@@ -2361,28 +2384,23 @@ function populateFilterDropdown(type) {
  */
 function cascadeLoanUpdates(sourceLoan, sourceMonthKey) {
     if (!sourceLoan || sourceLoan.type !== 'loan' || !sourceLoan.globalLoanId) {
-        return; // זו לא הלוואה חוקית עם ID גלובלי
+        return; 
     }
 
     const globalId = sourceLoan.globalLoanId;
     const allMonthKeys = getExistingMonths();
     const startIndex = allMonthKeys.indexOf(sourceMonthKey);
 
-    if (startIndex === -1) return; // לא מצאנו את חודש המקור? מוזר
+    if (startIndex === -1) return; 
 
     // רץ על כל החודשים *אחרי* חודש המקור
     for (let i = startIndex + 1; i < allMonthKeys.length; i++) {
         const futureMonthKey = allMonthKeys[i];
         const futureMonthData = allData[futureMonthKey];
         
-        // 1. חשב את מספר התשלום החדש
-        // (i - startIndex) = מרחק מחודש המקור (1, 2, 3...)
         const paymentNumber = sourceLoan.loanCurrent + (i - startIndex);
-        
-        // 2. בדוק אם ההלוואה הושלמה
         const isCompleted = paymentNumber >= sourceLoan.loanTotal;
 
-        // 3. חפש אם כבר קיים עותק בחודש העתידי
         let targetLoan = futureMonthData.expenses.find(t => t.globalLoanId === globalId);
 
         if (targetLoan) {
@@ -2394,28 +2412,29 @@ function cascadeLoanUpdates(sourceLoan, sourceMonthKey) {
             targetLoan.originalLoanAmount = sourceLoan.originalLoanAmount;
             targetLoan.loanTotal = sourceLoan.loanTotal;
             
+            // 💡 עדכן את יום החיוב הגלובלי
+            targetLoan.loanBillingDay = sourceLoan.loanBillingDay;
+            
             // עדכן נתונים "מקומיים" מחושבים
             targetLoan.loanCurrent = paymentNumber;
             targetLoan.completed = isCompleted;
-            targetLoan.checked = !isCompleted; // בטל V אם הושלם
+            targetLoan.checked = !isCompleted; 
 
         } else if (!isCompleted) {
             // --- לא מצאנו הלוואה, והיא עדיין לא הושלמה ---
             // --- ניצור עותק חדש בחודש העתידי ---
             
-            const newLoan = { ...sourceLoan }; // צור עותק מהמקור
+            // 💡 הפונקציה { ...sourceLoan } תעתיק אוטומטית את loanBillingDay
+            const newLoan = { ...sourceLoan }; 
             
             newLoan.id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            newLoan.globalLoanId = globalId; // שמור על ה-ID הגלובלי
+            newLoan.globalLoanId = globalId; 
             
-            // עדכן נתונים מחושבים
             newLoan.loanCurrent = paymentNumber;
             newLoan.completed = false;
-            newLoan.checked = true; // תנועה חדשה צריכה להיות פעילה
+            newLoan.checked = true; 
 
             futureMonthData.expenses.push(newLoan);
         }
-        // אם לא מצאנו (targetLoan = null) והיא כן הושלמה (isCompleted = true)
-        // -> אל תעשה כלום. אין צורך ליצור הלוואה שכבר הושלמה.
     }
 }
