@@ -2489,8 +2489,6 @@ function openShortfallModal() {
     
     // 5. פתח את החלון
     document.getElementById('shortfallModal').classList.add('active');
-    limitInput.focus();
-    limitInput.select();
 }
 
 /**
@@ -2537,4 +2535,48 @@ function calculateShortfall() {
         resultText.className = "summary-block-value positive"; // צבע ירוק
         resultText.textContent = "₪0.00"; // הצג 0, כי אין חריגה
     }
+}
+
+/**
+ * פותח חלון סטטיסטיקה על מצב האחסון
+ */
+function showStorageStats() {
+    // 1. חישוב גודל האחסון
+    const dataString = localStorage.getItem('budgetData') || '';
+    const dataSizeInBytes = new Blob([dataString]).size;
+    const dataSizeInKB = (dataSizeInBytes / 1024).toFixed(2); // המרה לקילובייט
+
+    // 2. חישוב מספר חודשים
+    const allMonthKeys = getExistingMonths();
+    const monthCount = allMonthKeys.length;
+
+    // 3. חישוב מספר תנועות
+    let transactionCount = 0;
+    allMonthKeys.forEach(monthKey => {
+        const monthData = allData[monthKey];
+        transactionCount += (monthData.income || []).length;
+        transactionCount += (monthData.expenses || []).length;
+    });
+
+    // 4. יצירת תוכן ה-HTML להצגה
+    // (אנו משתמשים ב-ul עם עיצוב פנימי כדי שייראה טוב במודל הקיים)
+    const statsHtml = `
+        <ul style="text-align: right; list-style-type: none; padding-right: 0; line-height: 1.8;">
+            <li style="margin-bottom: 10px;">
+                <strong><span style="font-size: 1.1em;">${monthCount}</span></strong> חודשים במערכת
+            </li>
+            <li style="margin-bottom: 10px;">
+                <strong><span style="font-size: 1.1em;">${transactionCount}</span></strong> תנועות (הכנסות והוצאות)
+            </li>
+            <li style="margin-bottom: 10px;">
+                <strong><span style="font-size: 1.1em;">${dataSizeInKB} KB</span></strong> גודל אחסון בשימוש
+            </li>
+            <li style="margin-top: 20px; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 10px;">
+                הגבול הממוצע בדפדפן הוא כ-5,000 KB (5MB).
+            </li>
+        </ul>
+    `;
+    
+    // 5. פתיחת המודל הקיים במצב "מידע"
+    openConfirmModal('סטטיסטיקת מערכת', statsHtml, closeConfirmModal);
 }
