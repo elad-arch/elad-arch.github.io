@@ -721,7 +721,7 @@ function updateSummary() {
         summaryCard.classList.add('alert-success');
         if (alertIconDiv) alertIconDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
     }
-    saveDataToLocal();
+    debouncedSave();
 }
 
 function updateLoansSummary() {
@@ -2580,3 +2580,24 @@ function showStorageStats() {
     // 5. פתיחת המודל הקיים במצב "מידע"
     openConfirmModal('סטטיסטיקת מערכת', statsHtml, closeConfirmModal);
 }
+
+// ================================================
+// =========== פונקציות ביצועים (Debounce) ===========
+// ================================================
+
+// 1. פונקציית עזר כללית להשהיה
+function debounce(func, wait) {
+    let timeout;
+    return function(...args) {
+        const context = this;
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(context, args), wait);
+    };
+}
+
+// 2. יצירת גרסה "מושהית" של פונקציית השמירה
+// היא תחכה 1000 מילישניות (שנייה אחת) של שקט לפני שתשמור באמת
+const debouncedSave = debounce(() => {
+    saveDataToLocal();
+    console.log('Auto-saved data to local storage'); // אינדיקציה בקונסול
+}, 1000);
