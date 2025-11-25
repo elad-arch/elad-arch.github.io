@@ -1600,6 +1600,8 @@ input[type="file"] {
     padding-left: 12px; /* Adjust if needed */
 }
 
+/* --- החלף את החלק הזה ב-styles.css --- */
+
 .tags-suggestions {
     display: none;
     position: absolute;
@@ -1607,10 +1609,11 @@ input[type="file"] {
     background: var(--card-bg);
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    max-height: 150px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15); /* צל מעט יותר בולט */
+    max-height: 200px; /* קצת יותר גובה */
     overflow-y: auto;
     z-index: 1001;
+    color: var(--text-primary); /* התיקון הקריטי: צבע טקסט דינמי (לבן בכהה, שחור בבהיר) */
 }
 
 .tags-suggestions.active {
@@ -1618,8 +1621,14 @@ input[type="file"] {
 }
 
 .tags-suggestions div {
-    padding: 10px 12px;
+    padding: 12px 12px; /* רווח נוח יותר לאצבע במובייל */
     cursor: pointer;
+    border-bottom: 1px solid var(--border-color); /* קו הפרדה בין תגים */
+    transition: background-color 0.2s;
+}
+
+.tags-suggestions div:last-child {
+    border-bottom: none;
 }
 
 .tags-suggestions div:hover {
@@ -2200,4 +2209,43 @@ input[type="file"] {
 /* מקטין מעט את השדה כדי שייראה טוב ליד המינוס */
 #overdraftLimitInput {
     width: 150px; 
+}
+
+/* עטיפה לבורר הצבעים כדי לשלוט בגודל */
+.tag-color-wrapper {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    overflow: hidden;
+    margin-left: 12px;
+    flex-shrink: 0;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+
+.tag-color-wrapper:hover {
+    transform: scale(1.1);
+}
+
+/* עיצוב האינפוט עצמו להעלמת המסגרת המקורית */
+.tag-color-picker {
+    width: 150%; /* גדול יותר מהעטיפה כדי להסתיר שוליים */
+    height: 150%;
+    margin: -25%; /* מירכוז */
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+.tag-color-picker::-webkit-color-swatch-wrapper {
+    padding: 0; 
+}
+
+.tag-color-picker::-webkit-color-swatch {
+    border: none;
 }

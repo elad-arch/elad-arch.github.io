@@ -2156,6 +2156,54 @@ function setupTagsInputEventListeners() {
     const tagsInput = document.getElementById('tagsInput');
     const suggestionsContainer = document.getElementById('tagsSuggestions');
 
+    // פונקציית עזר להצגת ההצעות
+    function showSuggestionsList(query = '') {
+        const allTags = getAllTags();
+        let filteredTags = allTags;
+
+        // אם יש טקסט, נסנן. אם אין טקסט - נציג הכל.
+        if (query) {
+            filteredTags = allTags.filter(tag => tag.name.toLowerCase().includes(query.toLowerCase()));
+        }
+
+        suggestionsContainer.innerHTML = '';
+        
+        if (filteredTags.length > 0) {
+            filteredTags.forEach(tag => {
+                // בדיקה שהתג לא נבחר כבר, כדי לא להציג כפילויות
+                const isAlreadySelected = currentTransactionTags.some(t => t.id === tag.id);
+                if (isAlreadySelected) return;
+
+                const suggestionEl = document.createElement('div');
+                // הוספנו את הצבע של התג גם בדרופ דאון שיהיה יפה
+                suggestionEl.innerHTML = `
+                    <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background-color:${tag.color}; margin-left:8px;"></span>
+                    ${sanitizeHTML(tag.name)}
+                `;
+                
+                suggestionEl.onclick = (e) => {
+                    e.stopPropagation(); // מונע סגירה מיידית
+                    addTagToTransaction(tag);
+                    tagsInput.value = '';
+                    suggestionsContainer.innerHTML = '';
+                    suggestionsContainer.classList.remove('active');
+                    tagsInput.focus(); // מחזיר את הפוקוס לשדה לכתיבה נוספת
+                };
+                suggestionsContainer.appendChild(suggestionEl);
+            });
+            
+            // מציג רק אם יש תוצאות רלוונטיות (שלא נבחרו כבר)
+            if (suggestionsContainer.children.length > 0) {
+                suggestionsContainer.classList.add('active');
+            } else {
+                suggestionsContainer.classList.remove('active');
+            }
+        } else {
+            suggestionsContainer.classList.remove('active');
+        }
+    }
+
+    // אירוע לחיצה על ENTER (יצירת תג חדש)
     tagsInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -2173,35 +2221,17 @@ function setupTagsInputEventListeners() {
         }
     });
 
-    tagsInput.addEventListener('keyup', () => {
-        const query = tagsInput.value.toLowerCase();
-        if (!query) {
-            suggestionsContainer.innerHTML = '';
-            suggestionsContainer.classList.remove('active');
-            return;
-        }
-        const allTags = getAllTags();
-        const filteredTags = allTags.filter(tag => tag.name.toLowerCase().includes(query));
-        
-        suggestionsContainer.innerHTML = '';
-        if(filteredTags.length > 0) {
-            filteredTags.forEach(tag => {
-                const suggestionEl = document.createElement('div');
-                suggestionEl.textContent = tag.name;
-                suggestionEl.onclick = () => {
-                    addTagToTransaction(tag);
-                    tagsInput.value = '';
-                    suggestionsContainer.innerHTML = '';
-                    suggestionsContainer.classList.remove('active');
-                };
-                suggestionsContainer.appendChild(suggestionEl);
-            });
-            suggestionsContainer.classList.add('active');
-        } else {
-            suggestionsContainer.classList.remove('active');
-        }
+    // אירוע הקלדה (סינון בזמן אמת)
+    tagsInput.addEventListener('input', () => {
+        showSuggestionsList(tagsInput.value);
     });
 
+    // אירוע פוקוס (לחיצה על השדה) - מציג את כל התגים
+    tagsInput.addEventListener('focus', () => {
+        showSuggestionsList(tagsInput.value); // שולח ערך ריק או קיים
+    });
+
+    // סגירת החלונית בלחיצה בחוץ
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.tags-input-wrapper')) {
             suggestionsContainer.classList.remove('active');
@@ -2252,14 +2282,25 @@ function openTagsManagementModal() {
         allTags.forEach(tag => {
             const tagItem = document.createElement('div');
             tagItem.className = 'tag-management-item';
+            
+            // --- השינוי מתחיל כאן ---
+            // במקום span רגיל, שמנו input מסוג color
+            // הוספנו לו אירוע onchange שקורא לפונקציה החדשה
             tagItem.innerHTML = `
-                <span class="tag-preview" style="background-color: ${tag.color};"></span>
+                <div class="tag-color-wrapper" title="לחץ לשינוי צבע">
+                    <input type="color" 
+                           class="tag-color-picker" 
+                           value="${tag.color}" 
+                           onchange="updateTagColor('${tag.id}', this.value)">
+                </div>
                 <span class="tag-name">${sanitizeHTML(tag.name)}</span>
                 <div class="tag-actions">
                     <button class="action-btn edit" onclick="editTag('${tag.id}')" title="שנה שם"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
                     <button class="action-btn delete" onclick="deleteTag('${tag.id}')" title="מחק תג"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
                 </div>
             `;
+            // --- השינוי מסתיים כאן ---
+            
             listContainer.appendChild(tagItem);
         });
     }
@@ -2314,6 +2355,18 @@ function deleteTag(tagId) {
         closeConfirmModal();
         openTagsManagementModal(); // Re-render the modal
     });
+}
+
+function updateTagColor(tagId, newColor) {
+    const tag = getTagById(tagId);
+    if (!tag || tag.color === newColor) return;
+
+    saveStateForUndo(); // שמירת מצב לביטול
+    allData.tags[tagId].color = newColor; // עדכון הצבע
+    saveDataToLocal(); // שמירה
+    render(); // רענון המסך הראשי כדי לראות את השינוי ברקע
+    
+    // אין צורך לרענן את המודל כולו כי האינפוט כבר מציג את הצבע החדש
 }
 
 // =======================================================
