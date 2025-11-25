@@ -17,6 +17,14 @@ let sortSettings = {
 };
 let manualSortActive = { income: false, expense: false };
 
+// משתנה למעקב מתי פעם אחרונה סנכרנו מול הענן
+let lastSyncedTime = 0; 
+
+// פונקציית עזר לחישוב מדויק (מונעת שגיאות עשרוניות)
+function safeCalc(amount) {
+    return Math.round(amount * 100) / 100;
+}
+
 // ================================================
 // =========== פונקציית אבטחה (Sanitization) ===========
 // ================================================
@@ -73,6 +81,10 @@ async function loadFromCloud(password) {
         const decryptedData = decryptData(cloudData.record.data, password);
         if (decryptedData) {
             allData = migrateData(decryptedData);
+
+            // עדכון חותמת הזמן המקומית למה שהגיע מהענן
+            lastSyncedTime = allData.settings?.lastUpdated || 0;
+
             initializeTags();
             currentMonth = Object.keys(allData).filter(k => k !== 'tags').sort().pop() || getCurrentMonthKey();
             saveDataToLocal();
@@ -88,6 +100,32 @@ async function loadFromCloud(password) {
 }
 
 async function saveToCloud(password) {
+    // שלב 1: בדיקת גרסאות (מונע דריסת נתונים)
+    try {
+        const checkResponse = await fetch('/api/load-data');
+        if (checkResponse.ok) {
+            const cloudJson = await checkResponse.json();
+            // אם יש מידע בענן, ננסה לבדוק את התאריך שלו
+            if (cloudJson.record && cloudJson.record.data) {
+                const cloudDecrypted = decryptData(cloudJson.record.data, password);
+                // אם הצלחנו לפענח ויש תאריך עדכון
+                if (cloudDecrypted && cloudDecrypted.settings && cloudDecrypted.settings.lastUpdated) {
+                    // אם הגרסה בענן חדשה יותר ממה שיש לנו כרגע
+                    if (cloudDecrypted.settings.lastUpdated > lastSyncedTime) {
+                        return 'version_conflict'; // החזרת שגיאת התנגשות
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("Could not check cloud version, proceeding anyway...", e);
+    }
+
+    // שלב 2: עדכון חותמת זמן ושמירה
+    if (!allData.settings) allData.settings = {};
+    const now = Date.now();
+    allData.settings.lastUpdated = now;
+    lastSyncedTime = now; // עדכון המשתנה המקומי
 
     saveDataToLocal();
     
@@ -97,15 +135,11 @@ async function saveToCloud(password) {
     if (!dataToSave.data) return 'encryption_failed';
     
     try {
-        // 💡 שינוי: קוראים לפונקציית השרת שלנו ב-Vercel
         const response = await fetch('/api/save-data', {
             method: 'POST', 
-            headers: {
-                'Content-Type': 'application/json' 
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(dataToSave) 
         });
-        // ----------------------------------------------------
 
         if (!response.ok) throw new Error('Failed to save data');
         return 'success';
@@ -146,7 +180,12 @@ async function handleSaveToCloud() {
     saveBtn.disabled = true;
     saveBtn.classList.add('loading');
     const result = await saveToCloud(password);
-    if (result === 'encryption_failed') {
+
+    if (result === 'version_conflict') {
+        openConfirmModal('התנגשות גרסאות', 'קיימת גרסה חדשה יותר בענן! <br>אנא בצע "טען מהענן" לפני השמירה כדי למנוע איבוד מידע.', closeConfirmModal);
+        saveBtn.classList.add('error');
+    }
+      else if (result === 'encryption_failed') {
         openConfirmModal('שגיאה', 'ההצפנה נכשלה. לא ניתן היה לשמור.', closeConfirmModal);
         saveBtn.classList.add('error');
     } else if (result === 'error') {
@@ -698,10 +737,15 @@ function updateSummary() {
     input.classList.toggle('positive-balance', currentBalanceValue > 0);
     input.classList.toggle('negative-balance', currentBalanceValue < 0);
     const currentData = allData[currentMonth] || { income: [], expenses: [] };
-    const incomeTotal = (currentData.income || []).reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
-    const expenseTotal = (currentData.expenses || []).reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
-    const balanceAfterExpenses = currentBalanceValue - expenseTotal;
-    const finalBalance = balanceAfterExpenses + incomeTotal;
+
+    // שימוש ב-safeCalc לסיכום הכנסות והוצאות
+    const incomeTotal = (currentData.income || []).reduce((sum, t) => safeCalc(sum + (t.checked ? t.amount : 0)), 0);
+    const expenseTotal = (currentData.expenses || []).reduce((sum, t) => safeCalc(sum + (t.checked ? t.amount : 0)), 0);
+    
+    // שימוש ב-safeCalc לחישוב היתרות
+    const balanceAfterExpenses = safeCalc(currentBalanceValue - expenseTotal);
+    const finalBalance = safeCalc(balanceAfterExpenses + incomeTotal);
+    
     const afterExpensesEl = document.getElementById('balanceAfterExpenses');
     afterExpensesEl.textContent = '₪' + balanceAfterExpenses.toLocaleString('he-IL', { minimumFractionDigits: 2 });
     afterExpensesEl.className = 'summary-block-value ' + (balanceAfterExpenses >= 0 ? 'positive' : 'negative');
@@ -2052,13 +2096,7 @@ function setupBalanceControls() {
     const balanceInput = document.getElementById('currentBalanceInput');
     
     const updateBalance = (amount) => {
-        let newBalance = (parseFloat(balanceInput.value) || 0) + amount;
-        
-        // --- התיקון כאן ---
-        // עיגול התוצאה ל-2 ספרות עשרוניות
-        newBalance = Math.round(newBalance * 100) / 100;
-        // --- סוף התיקון ---
-
+        let newBalance = safeCalc((parseFloat(balanceInput.value) || 0) + amount);
         balanceInput.value = newBalance;
         updateSummary();
     };
