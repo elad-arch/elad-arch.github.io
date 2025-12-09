@@ -17,9 +17,6 @@ let sortSettings = {
 };
 let manualSortActive = { income: false, expense: false };
 
-// משתנה למעקב מתי פעם אחרונה סנכרנו מול הענן
-let lastSyncedTime = 0; 
-
 // פונקציית עזר לחישוב מדויק (מונעת שגיאות עשרוניות)
 function safeCalc(amount) {
     return Math.round(amount * 100) / 100;
@@ -82,9 +79,6 @@ async function loadFromCloud(password) {
         if (decryptedData) {
             allData = migrateData(decryptedData);
 
-            // עדכון חותמת הזמן המקומית למה שהגיע מהענן
-            lastSyncedTime = allData.settings?.lastUpdated || 0;
-
             initializeTags();
             currentMonth = Object.keys(allData).filter(k => k !== 'tags').sort().pop() || getCurrentMonthKey();
             saveDataToLocal();
@@ -100,45 +94,23 @@ async function loadFromCloud(password) {
 }
 
 async function saveToCloud(password) {
-    // שלב 1: בדיקת גרסאות (מונע דריסת נתונים)
-    try {
-        const checkResponse = await fetch('/api/load-data');
-        if (checkResponse.ok) {
-            const cloudJson = await checkResponse.json();
-            // אם יש מידע בענן, ננסה לבדוק את התאריך שלו
-            if (cloudJson.record && cloudJson.record.data) {
-                const cloudDecrypted = decryptData(cloudJson.record.data, password);
-                // אם הצלחנו לפענח ויש תאריך עדכון
-                if (cloudDecrypted && cloudDecrypted.settings && cloudDecrypted.settings.lastUpdated) {
-                    // אם הגרסה בענן חדשה יותר ממה שיש לנו כרגע
-                    if (cloudDecrypted.settings.lastUpdated > lastSyncedTime) {
-                        return 'version_conflict'; // החזרת שגיאת התנגשות
-                    }
-                }
-            }
-        }
-    } catch (e) {
-        console.warn("Could not check cloud version, proceeding anyway...", e);
-    }
-
-    // שלב 2: עדכון חותמת זמן ושמירה
-    if (!allData.settings) allData.settings = {};
-    const now = Date.now();
-    allData.settings.lastUpdated = now;
-    lastSyncedTime = now; // עדכון המשתנה המקומי
-
+    // 1. קודם כל שומרים את המצב הנוכחי לזיכרון המקומי בטלפון
     saveDataToLocal();
+
+    // 2. עדכון חותמת זמן (בשביל הסדר הטוב, גם אם לא בודקים אותה)
+    if (!allData.settings) allData.settings = {};
+    allData.settings.lastUpdated = Date.now();
+
+    // 3. הצפנה
+    const encryptedString = encryptData(allData, password);
+    if (!encryptedString) return 'encryption_failed';
     
-    const dataToSave = {
-        data: encryptData(allData, password)
-    };
-    if (!dataToSave.data) return 'encryption_failed';
-    
+    // 4. שליחה לשרת
     try {
         const response = await fetch('/api/save-data', {
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dataToSave) 
+            body: JSON.stringify({ data: encryptedString }) 
         });
 
         if (!response.ok) throw new Error('Failed to save data');
@@ -176,28 +148,35 @@ async function handleSaveToCloud() {
         openConfirmModal('שגיאה', 'יש להזין סיסמת סנכרון.', closeConfirmModal);
         return;
     }
+
     const saveBtn = document.getElementById('saveToCloudBtn');
+    
+    // מצב טעינה (UI)
     saveBtn.disabled = true;
     saveBtn.classList.add('loading');
+
+    // ביצוע השמירה
     const result = await saveToCloud(password);
 
-    if (result === 'version_conflict') {
-        openConfirmModal('התנגשות גרסאות', 'קיימת גרסה חדשה יותר בענן! <br>אנא בצע "טען מהענן" לפני השמירה כדי למנוע איבוד מידע.', closeConfirmModal);
-        saveBtn.classList.add('error');
-    }
-      else if (result === 'encryption_failed') {
-        openConfirmModal('שגיאה', 'ההצפנה נכשלה. לא ניתן היה לשמור.', closeConfirmModal);
-        saveBtn.classList.add('error');
-    } else if (result === 'error') {
-        openConfirmModal('שגיאה', 'אירעה שגיאת רשת בעת השמירה.', closeConfirmModal);
-        saveBtn.classList.add('error');
-    } else if (result === 'success') {
+    // טיפול בתוצאות
+    saveBtn.classList.remove('loading');
+    
+    if (result === 'success') {
         saveBtn.classList.add('success');
-        openConfirmModal('הצלחה', 'הנתונים נשמרו בענן!', closeConfirmModal);
+        // אופציונלי: אפשר לוותר על המודל הזה אם רוצים חוויה עוד יותר שקטה
+        openConfirmModal('הצלחה', 'הנתונים נשמרו בענן בהצלחה!', closeConfirmModal);
+    } else if (result === 'encryption_failed') {
+        saveBtn.classList.add('error');
+        openConfirmModal('שגיאה', 'ההצפנה נכשלה. הנתונים לא נשמרו.', closeConfirmModal);
+    } else {
+        saveBtn.classList.add('error');
+        openConfirmModal('שגיאה', 'אירעה שגיאת תקשורת מול השרת.', closeConfirmModal);
     }
+
+    // איפוס הכפתור אחרי 2 שניות
     setTimeout(() => {
         saveBtn.disabled = false;
-        saveBtn.classList.remove('loading', 'success', 'error');
+        saveBtn.classList.remove('success', 'error');
     }, 2000);
 }
 
@@ -2066,7 +2045,7 @@ function openConfirmModal(title, text, onConfirm, onCancel = closeConfirmModal) 
     const newCancelBtn = cancelBtn.cloneNode(true);
     cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
     newCancelBtn.addEventListener('click', onCancel);
-    const isInfo = title === 'שגיאה' || title === 'מידע' || title === 'הצלחה';
+    const isInfo = title === 'שגיאה' || title === 'מידע' || title === 'הצלחה' || title === 'סטטיסטיקת מערכת';
     newConfirmBtn.style.display = isInfo ? 'none' : 'flex';
     newCancelBtn.textContent = isInfo ? 'סגור' : 'ביטול';
     document.getElementById('confirmModal').classList.add('active');
