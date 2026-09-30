@@ -2799,6 +2799,8 @@ body.header-pinned .app-header {
 }
 
 .list-card .transaction-list {
+    max-height: none;
+    padding-right: 0;
     min-height: 0;
     gap: 0;
     margin-bottom: 0;
@@ -3079,4 +3081,27 @@ body.header-pinned .app-header {
 .hero-input::-webkit-outer-spin-button {
     -webkit-appearance: none;
     margin: 0;
+}
+
+.list-card .loan-progress-actions {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 10px;
+}
+
+.list-card .loan-edit-btn {
+    min-height: 40px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 10px;
+    background: var(--surface-muted);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.list-card .loan-progress.visible {
+    max-height: 200px;
 }

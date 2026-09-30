@@ -2109,9 +2109,10 @@ function renderTransactionList(type, filteredData, allDataForIndices) {
             const amountPaid = t.amount * t.loanCurrent;
             const isComplete = t.loanCurrent >= t.loanTotal;
             progressBar = `
-                <div class="loan-progress visible">
+                <div class="loan-progress ${t.isExpanded ? 'visible' : ''}">
                     <div class="loan-progress-container"><div class="progress-bar-container"><div class="progress-bar-fill" style="width: ${percentage}%"></div></div>
                         <div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div>
+                        <div class="loan-progress-actions"><button type="button" class="loan-edit-btn" data-action="edit">ערוך הלוואה</button></div>
                     </div>
                 </div>`;
         }
@@ -2119,7 +2120,7 @@ function renderTransactionList(type, filteredData, allDataForIndices) {
         // --- תבנית HTML סופית (עם התאמה לסוג) ---
         const itemHTML = `
             <div class="transaction-item ${type === 'expense' && t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${t.completed ? 'completed' : ''}" 
-                 data-id="${t.id}" data-type="${type}" data-action="edit">
+                 data-id="${t.id}" data-type="${type}" data-action="${type === 'expense' && t.type === 'loan' ? 'toggle-loan' : 'edit'}">
                 
                 <div class="transaction-info">
                     <div class="transaction-check ${t.checked ? 'checked' : ''}" data-action="toggle-check"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
