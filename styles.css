@@ -320,19 +320,19 @@ body.header-pinned .header {
     transition: background 0.3s, color 0.3s;
 }
 
-.sync-status[data-state="saving"] {
+.sync-status[data-state="dirty"] {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.sync-status[data-state="busy"] {
     background: #dbeafe;
     color: #1d4ed8;
+    cursor: wait;
 }
 
-.sync-status[data-state="saving"] svg {
+.sync-status[data-state="busy"] svg {
     animation: sync-pulse 1s ease-in-out infinite;
-}
-
-.sync-status[data-state="error"],
-.sync-status[data-state="conflict"] {
-    background: #fee2e2;
-    color: #b91c1c;
 }
 
 @keyframes sync-pulse {
@@ -2320,4 +2320,20 @@ input[type="file"] {
 
 .choice-actions {
     flex-direction: column;
+}
+
+.lock-reset {
+    display: block;
+    margin: 14px auto 0;
+    background: none;
+    border: none;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.lock-reset[hidden] {
+    display: none;
 }

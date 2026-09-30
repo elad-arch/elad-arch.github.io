@@ -33,31 +33,29 @@ function sanitizeHTML(str) {
 }
 
 // ================================================
-// =========== אחסון בענן (מקור הנתונים היחיד) ===========
+// =========== אחסון: במכשיר (מוצפן) + גיבוי ידני לענן ===========
 // ================================================
-// הנתונים הפיננסיים לא נשמרים בדפדפן. הם נטענים מהענן אחרי הזנת סיסמה,
-// מוחזקים בזיכרון בלבד, ונשמרים חזרה לענן אוטומטית אחרי כל שינוי.
-// ב-localStorage נשמרות רק העדפות תצוגה (ערכת נושא, חודש אחרון שנצפה וכו').
+// הנתונים נשמרים במכשיר, מוצפנים בסיסמה שלך. לכן האפליקציה נפתחת מיד ועובדת גם בלי אינטרנט.
+// הענן משמש לגיבוי ולהעברה בין מכשירים, רק כשלוחצים "גבה לענן" או "טען מהענן".
 
-const CLOUD_SAVE_DELAY = 1500;
-const CLOUD_RETRY_DELAY = 10000;
+const LOCAL_DATA_KEY = 'budgetDataEnc';
+const SYNC_META_KEY = 'syncMeta';
+const LOCAL_SAVE_DELAY = 300;
 const PBKDF2_ITERATIONS = 310000;
 const AUTH_SALT = 'mazpen-auth-v1';
-const KEEPALIVE_MAX_BYTES = 60000; // לדפדפנים יש מגבלה של 64KB לבקשות keepalive
 
-const cloud = {
-    ready: false,          // האם הנתונים נטענו מהענן (לפני זה אסור לשמור!)
+const sync = {
+    ready: false,          // האם הנתונים נפתחו (לפני זה אסור לשמור!)
     password: null,
-    token: null,           // טוקן גישה לשרת, נגזר מהסיסמה
+    token: null,           // טוקן גישה לשרת, נגזר מהסיסמה רק כשצריך את הענן
     key: null,             // מפתח ההצפנה (AES-GCM), נגזר מהסיסמה
     salt: null,
-    version: null,         // גרסת הרשומה בענן שעליה מבוססים הנתונים שבזיכרון
-    lastSyncedJson: null,  // מה שנשמר לאחרונה, כדי לא לשמור כשאין שינוי
-    saving: false,
-    pending: false,
-    timer: null,
-    conflictVersion: null, // לא null = מכשיר אחר שמר בינתיים
-    clearLocalAfterSave: false
+    meta: { cloudVersion: null, backedUpHash: null, lastBackupAt: null },
+    currentHash: null,     // טביעת אצבע של הנתונים כפי שנשמרו במכשיר
+    lastLocalJson: null,
+    localTimer: null,
+    localSaving: Promise.resolve(),
+    busy: false
 };
 
 const textEncoder = new TextEncoder();
@@ -71,6 +69,11 @@ function bytesToBase64(bytes) {
 
 function base64ToBytes(base64) {
     return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+}
+
+async function sha256Hex(text) {
+    const digest = await crypto.subtle.digest('SHA-256', textEncoder.encode(text));
+    return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
 }
 
 async function importPasswordKey(password) {
@@ -96,19 +99,18 @@ async function deriveEncryptionKey(password, salt) {
 
 async function encryptJson(json) {
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cloud.key, textEncoder.encode(json));
+    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, sync.key, textEncoder.encode(json));
     return JSON.stringify({
         v: 2,
-        salt: bytesToBase64(cloud.salt),
+        salt: bytesToBase64(sync.salt),
         iv: bytesToBase64(iv),
         ct: bytesToBase64(new Uint8Array(cipher))
     });
 }
 
 /**
- * מפענח את המידע מהענן. תומך גם בפורמט הישן (CryptoJS).
- * בפורמט החדש, שומר את המפתח וה-salt לשמירות הבאות.
- * מחזיר null אם הסיסמה שגויה.
+ * מפענח מידע מוצפן (מהמכשיר או מהענן). תומך גם בפורמט הישן של הענן (CryptoJS).
+ * מחזיר { data, key, salt } או null אם הסיסמה שגויה. בפורמט הישן key ו-salt הם null.
  */
 async function decryptPayload(payload, password) {
     let envelope = null;
@@ -121,34 +123,92 @@ async function decryptPayload(payload, password) {
             const plain = await crypto.subtle.decrypt(
                 { name: 'AES-GCM', iv: base64ToBytes(envelope.iv) }, key, base64ToBytes(envelope.ct)
             );
-            cloud.key = key;
-            cloud.salt = salt;
-            return JSON.parse(textDecoder.decode(plain));
+            return { data: JSON.parse(textDecoder.decode(plain)), key, salt };
         } catch (e) {
             return null;
         }
     }
 
-    // פורמט ישן - בשמירה הבאה הוא יוצפן מחדש בפורמט החדש
     try {
         const decryptedString = CryptoJS.AES.decrypt(payload, password).toString(CryptoJS.enc.Utf8);
-        return decryptedString ? JSON.parse(decryptedString) : null;
+        return decryptedString ? { data: JSON.parse(decryptedString), key: null, salt: null } : null;
     } catch (e) {
         return null;
     }
 }
 
-function cloudFetch(method, body, keepalive = false) {
-    const headers = { 'Authorization': `Bearer ${cloud.token}` };
+function loadSyncMeta() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(SYNC_META_KEY));
+        if (saved && typeof saved === 'object') sync.meta = { ...sync.meta, ...saved };
+    } catch (e) { /* ברירת מחדל */ }
+}
+
+function saveSyncMeta() {
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify(sync.meta));
+}
+
+// ---------- שמירה במכשיר ----------
+
+// מעתיק את העו"ש מהשדה במסך אל הנתונים של החודש הנוכחי
+function syncBalanceFromInput() {
+    if (sync.ready && allData[currentMonth]) {
+        allData[currentMonth].balance = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
+    }
+}
+
+// שומר את השינויים במכשיר (מוצפן). נקרא אחרי כל שינוי.
+function saveData() {
+    if (!sync.ready) return;
+    syncBalanceFromInput();
+    localStorage.setItem('currentMonth', currentMonth);
+    clearTimeout(sync.localTimer);
+    sync.localTimer = setTimeout(flushLocalSave, LOCAL_SAVE_DELAY);
+}
+
+function flushLocalSave() {
+    clearTimeout(sync.localTimer);
+    sync.localTimer = null;
+    if (!sync.ready) return sync.localSaving;
+
+    const json = JSON.stringify(allData);
+    if (json === sync.lastLocalJson) return sync.localSaving;
+    sync.lastLocalJson = json;
+
+    // השמירות רצות אחת אחרי השנייה, כדי שגרסה ישנה לא תדרוס חדשה
+    const run = async () => {
+        const payload = await encryptJson(json);
+        try {
+            localStorage.setItem(LOCAL_DATA_KEY, payload);
+        } catch (e) {
+            console.error('Local save failed:', e);
+            openConfirmModal('שגיאה', 'לא ניתן לשמור את הנתונים במכשיר (ייתכן שהאחסון מלא). מומלץ לגבות לענן או לייצא קובץ.', closeConfirmModal);
+        }
+        sync.currentHash = await sha256Hex(json);
+        updateBackupStatus();
+    };
+    sync.localSaving = sync.localSaving.then(run, run);
+    return sync.localSaving;
+}
+
+// ---------- ענן ----------
+
+async function getAuthToken() {
+    if (!sync.token) sync.token = await deriveAuthToken(sync.password);
+    return sync.token;
+}
+
+async function cloudFetch(method, body) {
+    const token = await getAuthToken();
+    const headers = { 'Authorization': `Bearer ${token}` };
     if (body) headers['Content-Type'] = 'application/json';
-    return fetch('/api/data', { method, headers, body, keepalive, cache: 'no-store' });
+    return fetch('/api/data', { method, headers, body, cache: 'no-store' });
 }
 
 /**
- * טוען את הנתונים מהענן ומפענח אותם.
- * מחזיר { status: 'ok' | 'wrong_password' | 'error', data }
+ * טוען מהענן ומפענח. מחזיר { status: 'ok' | 'wrong_password' | 'error', data, version }
  */
-async function fetchCloudData(password) {
+async function fetchCloudData() {
     let response;
     try {
         response = await cloudFetch('GET');
@@ -159,111 +219,134 @@ async function fetchCloudData(password) {
     if (!response.ok) return { status: 'error' };
 
     const { data, version } = await response.json();
-    cloud.key = null;
-    let decrypted = null;
-    if (data) {
-        decrypted = await decryptPayload(data, password);
-        if (!decrypted) return { status: 'wrong_password' };
-    }
-    if (!cloud.key) {
-        cloud.salt = crypto.getRandomValues(new Uint8Array(16));
-        cloud.key = await deriveEncryptionKey(password, cloud.salt);
-    }
-    cloud.version = version;
-    return { status: 'ok', data: decrypted };
+    if (!data) return { status: 'ok', data: null, version };
+    const decrypted = await decryptPayload(data, sync.password);
+    if (!decrypted) return { status: 'wrong_password' };
+    return { status: 'ok', data: decrypted.data, version };
 }
 
-function hasUnsavedChanges() {
-    return cloud.ready && JSON.stringify(allData) !== cloud.lastSyncedJson;
+function isBackedUp() {
+    return !!sync.currentHash && sync.currentHash === sync.meta.backedUpHash;
 }
 
-function scheduleCloudSave(delay = CLOUD_SAVE_DELAY) {
-    if (!cloud.ready || cloud.conflictVersion !== null) return;
-    clearTimeout(cloud.timer);
-    cloud.timer = setTimeout(() => flushCloudSave(), delay);
+function formatDateTime(timestamp) {
+    if (!timestamp) return 'אף פעם';
+    return new Date(timestamp).toLocaleString('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-async function flushCloudSave({ keepalive = false } = {}) {
-    clearTimeout(cloud.timer);
-    cloud.timer = null;
-    if (!cloud.ready || cloud.conflictVersion !== null) return;
-    if (cloud.saving) {
-        cloud.pending = true;
-        return;
-    }
+function updateBackupStatus() {
+    const btn = document.getElementById('backupBtn');
+    if (!btn) return;
+    const state = sync.busy ? 'busy' : (isBackedUp() ? 'saved' : 'dirty');
+    btn.dataset.state = state;
+    document.getElementById('backupBtnText').textContent = { saved: 'מגובה', dirty: 'גבה לענן', busy: 'רגע…' }[state];
+    const last = `גיבוי אחרון: ${formatDateTime(sync.meta.lastBackupAt)}`;
+    btn.title = state === 'dirty' ? `יש שינויים שעוד לא גובו לענן. לחץ לגיבוי. (${last})` : last;
+}
 
-    const json = JSON.stringify(allData);
-    if (json === cloud.lastSyncedJson) {
-        setSyncStatus('saved');
-        return;
-    }
+// מציב נתונים שנטענו מהענן, שומר אותם במכשיר ומסמן אותם כמגובים
+async function applyCloudData(data, version) {
+    previousState = null;
+    document.getElementById('undoBtn').disabled = true;
+    applyLoadedData(data);
+    await flushLocalSave();
+    sync.meta.cloudVersion = version;
+    sync.meta.backedUpHash = sync.currentHash;
+    saveSyncMeta();
+    updateBackupStatus();
+}
 
-    cloud.saving = true;
-    setSyncStatus('saving');
+async function backupToCloud() {
+    if (!sync.ready || sync.busy) return;
+    syncBalanceFromInput();
+    await flushLocalSave();
+
+    sync.busy = true;
+    updateBackupStatus();
     try {
-        const body = JSON.stringify({ data: await encryptJson(json), baseVersion: cloud.version });
-        const response = await cloudFetch('POST', body, keepalive && body.length < KEEPALIVE_MAX_BYTES);
+        const json = JSON.stringify(allData);
+        const body = JSON.stringify({ data: await encryptJson(json), baseVersion: sync.meta.cloudVersion });
+        const response = await cloudFetch('POST', body);
 
         if (response.status === 409) {
-            const result = await response.json();
-            cloud.conflictVersion = result.version;
-            setSyncStatus('conflict');
-            showConflictDialog();
+            const { version } = await response.json();
+            sync.busy = false;
+            updateBackupStatus();
+            const choice = await showChoiceDialog(
+                'בענן יש גרסה אחרת',
+                'מאז הטעינה או הגיבוי האחרון במכשיר הזה, נשמרה בענן גרסה אחרת (כנראה ממכשיר אחר).<br>מה לעשות?',
+                [
+                    { label: 'גבה ודרוס את הענן', value: 'overwrite', style: 'modal-btn-save' },
+                    { label: 'טען את הגרסה מהענן', value: 'load' },
+                    { label: 'ביטול', value: 'cancel' }
+                ]
+            );
+            if (choice === 'overwrite') {
+                sync.meta.cloudVersion = version;
+                saveSyncMeta();
+                return backupToCloud();
+            }
+            if (choice === 'load') return loadFromCloud();
             return;
         }
-        if (!response.ok) throw new Error(`Save failed: ${response.status}`);
-
-        const result = await response.json();
-        cloud.version = result.version;
-        cloud.lastSyncedJson = json;
-        if (cloud.clearLocalAfterSave) {
-            localStorage.removeItem('budgetData');
-            cloud.clearLocalAfterSave = false;
+        if (response.status === 401) {
+            openConfirmModal('שגיאה', 'הסיסמה לא תואמת את המאגר בענן. הגיבוי לא בוצע.', closeConfirmModal);
+            return;
         }
-        setSyncStatus('saved');
+        if (!response.ok) throw new Error(`Backup failed: ${response.status}`);
+
+        const { version } = await response.json();
+        sync.meta.cloudVersion = version;
+        sync.meta.backedUpHash = await sha256Hex(json);
+        sync.meta.lastBackupAt = Date.now();
+        saveSyncMeta();
     } catch (error) {
-        console.error('Error saving to cloud:', error);
-        setSyncStatus('error');
-        clearTimeout(cloud.timer);
-        cloud.timer = setTimeout(() => flushCloudSave(), CLOUD_RETRY_DELAY);
+        console.error('Error backing up to cloud:', error);
+        openConfirmModal('שגיאה', 'הגיבוי לענן נכשל. בדוק את החיבור לאינטרנט ונסה שוב.', closeConfirmModal);
     } finally {
-        cloud.saving = false;
-        if (cloud.pending) {
-            cloud.pending = false;
-            scheduleCloudSave(300);
+        sync.busy = false;
+        updateBackupStatus();
+    }
+}
+
+async function loadFromCloud() {
+    if (!sync.ready || sync.busy) return;
+    syncBalanceFromInput();
+    await flushLocalSave();
+
+    if (!isBackedUp()) {
+        const confirmed = await showAsyncConfirm(
+            'טעינה מהענן',
+            'במכשיר יש שינויים שעוד <b>לא גובו</b> לענן. הטעינה תחליף אותם בגרסה מהענן. להמשיך?'
+        );
+        if (!confirmed) return;
+    }
+
+    sync.busy = true;
+    updateBackupStatus();
+    try {
+        const result = await fetchCloudData();
+        if (result.status === 'wrong_password') {
+            openConfirmModal('שגיאה', 'הסיסמה לא תואמת את המאגר בענן.', closeConfirmModal);
+            return;
         }
+        if (result.status === 'error') {
+            openConfirmModal('שגיאה', 'הטעינה מהענן נכשלה. בדוק את החיבור לאינטרנט ונסה שוב.', closeConfirmModal);
+            return;
+        }
+        if (!result.data) {
+            openConfirmModal('מידע', 'אין עדיין גיבוי בענן.', closeConfirmModal);
+            return;
+        }
+        await applyCloudData(result.data, result.version);
+        openConfirmModal('הצלחה', 'הנתונים נטענו מהענן.', closeConfirmModal);
+    } finally {
+        sync.busy = false;
+        updateBackupStatus();
     }
 }
 
-const syncStatusTexts = {
-    saved: 'נשמר בענן',
-    saving: 'שומר…',
-    error: 'לא נשמר!',
-    conflict: 'התנגשות'
-};
-
-function setSyncStatus(state) {
-    const btn = document.getElementById('syncStatusBtn');
-    if (!btn) return;
-    btn.dataset.state = state;
-    document.getElementById('syncStatusText').textContent = syncStatusTexts[state] || '';
-    const titles = {
-        saved: 'כל השינויים נשמרו בענן',
-        saving: 'שומר את השינויים בענן...',
-        error: 'השמירה לענן נכשלה. ננסה שוב אוטומטית - לחץ לנסות עכשיו',
-        conflict: 'הנתונים עודכנו ממכשיר אחר - לחץ לבחירה'
-    };
-    btn.title = titles[state] || '';
-}
-
-function handleSyncStatusClick() {
-    if (cloud.conflictVersion !== null) {
-        showConflictDialog();
-    } else {
-        syncBalanceFromInput();
-        flushCloudSave();
-    }
-}
+// ---------- חלון בחירה חוסם ----------
 
 /**
  * חלון חוסם עם כפתורי בחירה (לא נסגר ב-Escape או בלחיצה בחוץ).
@@ -290,36 +373,7 @@ function showChoiceDialog(title, html, buttons) {
     });
 }
 
-async function showConflictDialog() {
-    const choice = await showChoiceDialog(
-        'הנתונים עודכנו ממכשיר אחר',
-        'מאז שטענת את הנתונים, נשמרה בענן גרסה חדשה יותר (כנראה ממכשיר אחר).<br>איזו גרסה לשמור?',
-        [
-            { label: 'טען את הגרסה מהענן', value: 'cloud', style: 'modal-btn-save' },
-            { label: 'דרוס עם הגרסה שלי', value: 'mine' }
-        ]
-    );
-    if (cloud.conflictVersion === null) return; // כבר טופל בחלון אחר
-
-    if (choice === 'mine') {
-        cloud.version = cloud.conflictVersion;
-        cloud.conflictVersion = null;
-        flushCloudSave();
-        return;
-    }
-
-    const result = await fetchCloudData(cloud.password);
-    if (result.status !== 'ok') {
-        openConfirmModal('שגיאה', 'לא הצלחנו לטעון את הנתונים מהענן. נסה שוב.', closeConfirmModal);
-        return;
-    }
-    cloud.conflictVersion = null;
-    applyLoadedData(result.data);
-    cloud.lastSyncedJson = JSON.stringify(allData);
-    previousState = null;
-    document.getElementById('undoBtn').disabled = true;
-    setSyncStatus('saved');
-}
+// ---------- כניסה ----------
 
 function getRememberedPassword() {
     try {
@@ -348,71 +402,88 @@ function showLockScreen(errorText = '') {
     document.getElementById('lockScreen').classList.add('active');
     document.getElementById('lockError').textContent = errorText;
     document.getElementById('lockSubmitBtn').disabled = false;
+    document.getElementById('lockResetBtn').hidden = !localStorage.getItem(LOCAL_DATA_KEY);
     document.getElementById('lockPasswordInput').focus();
 }
 
 /**
- * כניסה: גוזר מפתחות מהסיסמה, טוען מהענן, ומטפל בנתונים ישנים שנשארו בטלפון.
+ * כניסה: אם יש נתונים במכשיר - פותח אותם (בלי אינטרנט).
+ * אם אין (מכשיר חדש) - טוען פעם אחת מהגיבוי בענן.
  */
 async function unlock(password, rememberOnDevice) {
-    const submitBtn = document.getElementById('lockSubmitBtn');
-    const lockError = document.getElementById('lockError');
-    submitBtn.disabled = true;
-    lockError.textContent = 'טוען מהענן…';
+    document.getElementById('lockSubmitBtn').disabled = true;
+    document.getElementById('lockError').textContent = 'פותח…';
 
     if (!window.crypto || !crypto.subtle) {
         showLockScreen('הדפדפן לא תומך בהצפנה (האתר חייב לרוץ ב-https).');
         return;
     }
 
-    cloud.password = password;
-    cloud.token = await deriveAuthToken(password);
-    const result = await fetchCloudData(password);
+    sync.password = password;
+    sync.token = null;
 
+    const localPayload = localStorage.getItem(LOCAL_DATA_KEY);
+    if (localPayload) {
+        const decrypted = await decryptPayload(localPayload, password);
+        if (!decrypted || !decrypted.key) {
+            forgetPassword();
+            showLockScreen('הסיסמה שגויה.');
+            return;
+        }
+        sync.key = decrypted.key;
+        sync.salt = decrypted.salt;
+        loadSyncMeta();
+        await finishUnlock(decrypted.data, rememberOnDevice);
+        return;
+    }
+
+    // --- אין נתונים במכשיר: טעינה ראשונה מהענן ---
+    document.getElementById('lockError').textContent = 'טוען מהגיבוי בענן…';
+    const result = await fetchCloudData();
     if (result.status === 'wrong_password') {
         forgetPassword();
         showLockScreen('הסיסמה שגויה.');
         return;
     }
     if (result.status === 'error') {
-        showLockScreen('שגיאת תקשורת מול השרת. בדוק את החיבור ונסה שוב.');
+        showLockScreen('אין חיבור לשרת. בפעם הראשונה במכשיר הזה צריך אינטרנט כדי לטעון את הגיבוי.');
         return;
     }
 
-    let dataToUse = result.data;
-    let alreadySynced = !!result.data;
+    sync.salt = crypto.getRandomValues(new Uint8Array(16));
+    sync.key = await deriveEncryptionKey(password, sync.salt);
+    sync.meta = { cloudVersion: result.version, backedUpHash: null, lastBackupAt: null };
 
-    // נתונים ישנים ששמורים בטלפון מהגרסה הקודמת של האפליקציה
-    let localData = null;
+    // נתונים לא מוצפנים מגרסה ישנה של האפליקציה
+    let legacyData = null;
     try {
-        const localJson = localStorage.getItem('budgetData');
-        localData = localJson ? JSON.parse(localJson) : null;
+        const legacyJson = localStorage.getItem('budgetData');
+        legacyData = legacyJson ? JSON.parse(legacyJson) : null;
     } catch (e) { /* התעלם מנתונים פגומים */ }
 
-    if (localData && !result.data) {
-        dataToUse = localData;
-        alreadySynced = false;
-        cloud.clearLocalAfterSave = true; // נמחק מהטלפון רק אחרי שנשמר בענן
-    } else if (localData && result.data) {
+    let dataToUse = result.data;
+    let fromCloud = !!result.data;
+
+    if (legacyData && result.data) {
         const choice = await showChoiceDialog(
-            'נמצאו נתונים ישנים בטלפון',
-            'במכשיר הזה שמורים נתונים מהגרסה הקודמת, וגם בענן יש נתונים.<br>מעכשיו הנתונים יישמרו רק בענן. באיזו גרסה להשתמש?',
+            'נמצאו נתונים ישנים במכשיר',
+            'במכשיר הזה שמורים נתונים מגרסה קודמת של האפליקציה, וגם בענן יש גיבוי.<br>באיזו גרסה להשתמש?',
             [
-                { label: 'הגרסה מהענן', value: 'cloud', style: 'modal-btn-save' },
-                { label: 'הגרסה מהטלפון (תדרוס את הענן)', value: 'local' }
+                { label: 'הגיבוי מהענן', value: 'cloud', style: 'modal-btn-save' },
+                { label: 'הנתונים מהמכשיר', value: 'local' }
             ]
         );
         if (choice === 'local') {
-            dataToUse = localData;
-            alreadySynced = false;
-            cloud.clearLocalAfterSave = true;
-        } else {
-            localStorage.removeItem('budgetData');
+            dataToUse = legacyData;
+            fromCloud = false;
         }
+    } else if (legacyData) {
+        dataToUse = legacyData;
+        fromCloud = false;
     } else if (!result.data) {
         const choice = await showChoiceDialog(
-            'מאגר חדש בענן',
-            'המאגר בענן ריק. הסיסמה שהזנת תנעל אותו, ובלעדיה <b>אי אפשר לשחזר את הנתונים</b>.<br>לוודא שאתה זוכר אותה?',
+            'מתחילים מחדש',
+            'אין נתונים במכשיר ואין גיבוי בענן.<br>הסיסמה שהזנת תצפין את הנתונים, והגיבוי הראשון ינעל את המאגר בענן. <b>בלי הסיסמה אי אפשר לשחזר את הנתונים.</b>',
             [
                 { label: 'המשך עם הסיסמה הזו', value: 'ok', style: 'modal-btn-save' },
                 { label: 'חזור', value: 'back' }
@@ -424,32 +495,55 @@ async function unlock(password, rememberOnDevice) {
         }
     }
 
-    const loadedJson = alreadySynced ? JSON.stringify(dataToUse) : null;
-    rememberPassword(password, rememberOnDevice);
-    cloud.ready = true;
-    applyLoadedData(dataToUse);
-    // אם המיגרציה לא שינתה כלום - אין מה לשמור. אחרת (או בנתונים חדשים) תתבצע שמירה.
-    cloud.lastSyncedJson = loadedJson;
+    await finishUnlock(dataToUse, rememberOnDevice);
+    if (fromCloud) {
+        sync.meta.backedUpHash = sync.currentHash;
+        saveSyncMeta();
+        updateBackupStatus();
+    }
+}
+
+async function finishUnlock(data, rememberOnDevice) {
+    rememberPassword(sync.password, rememberOnDevice);
+    sync.ready = true;
+    applyLoadedData(data);
+    await flushLocalSave();
+    saveSyncMeta();
+    localStorage.removeItem('budgetData'); // הגרסה הלא מוצפנת כבר לא נחוצה
     document.getElementById('lockScreen').classList.remove('active');
     document.getElementById('lockPasswordInput').value = '';
-    setSyncStatus('saved');
-    scheduleCloudSave(0);
+    updateBackupStatus();
+
+    // מבקש מהדפדפן לא למחוק את הנתונים כשחסר מקום
+    if (navigator.storage && navigator.storage.persist) {
+        navigator.storage.persist().catch(() => {});
+    }
 }
 
 async function lockApp() {
     syncBalanceFromInput();
-    if (hasUnsavedChanges()) {
-        await flushCloudSave();
-        if (hasUnsavedChanges()) {
-            const confirmed = await showAsyncConfirm('יש שינויים שלא נשמרו', 'השמירה לענן נכשלה. אם תתנתק עכשיו, השינויים האחרונים יאבדו. להתנתק בכל זאת?');
-            if (!confirmed) return;
-        }
-    }
+    await flushLocalSave();
     forgetPassword();
     location.reload();
 }
 
-function initCloud() {
+async function resetLocalData() {
+    const choice = await showChoiceDialog(
+        'מחיקת הנתונים מהמכשיר',
+        'הנתונים יימחקו <b>מהמכשיר הזה בלבד</b>. אחרי זה תוכל להיכנס ולטעון את הגיבוי מהענן.<br>שינויים שלא גובו לענן יאבדו לתמיד.',
+        [
+            { label: 'מחק מהמכשיר', value: 'delete', style: 'modal-btn-danger' },
+            { label: 'ביטול', value: 'cancel' }
+        ]
+    );
+    if (choice !== 'delete') return;
+    localStorage.removeItem(LOCAL_DATA_KEY);
+    localStorage.removeItem(SYNC_META_KEY);
+    forgetPassword();
+    location.reload();
+}
+
+function initStorage() {
     document.getElementById('lockForm').addEventListener('submit', (e) => {
         e.preventDefault();
         const password = document.getElementById('lockPasswordInput').value;
@@ -459,30 +553,35 @@ function initCloud() {
         }
         unlock(password, document.getElementById('lockRememberCheckbox').checked);
     });
-    document.getElementById('syncStatusBtn').addEventListener('click', handleSyncStatusClick);
+    document.getElementById('lockResetBtn').addEventListener('click', resetLocalData);
+    document.getElementById('backupBtn').addEventListener('click', backupToCloud);
+    document.getElementById('loadFromCloudBtn').addEventListener('click', loadFromCloud);
     document.getElementById('lockBtn').addEventListener('click', lockApp);
 
-    // שמירה אחרונה כשיוצאים מהאפליקציה (בטלפון beforeunload לא תמיד נקרא)
+    // שמירה אחרונה במכשיר כשיוצאים מהאפליקציה
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
             syncBalanceFromInput();
-            flushCloudSave({ keepalive: true });
+            flushLocalSave();
         }
     });
     window.addEventListener('beforeunload', (e) => {
-        syncBalanceFromInput();
-        if (hasUnsavedChanges() || cloud.saving) {
-            flushCloudSave({ keepalive: true });
+        if (sync.localTimer) {
+            flushLocalSave();
             e.preventDefault();
             e.returnValue = '';
         }
     });
-    window.addEventListener('online', () => flushCloudSave());
+
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+        navigator.serviceWorker.register('/sw.js').catch(err => console.error('Service worker registration failed:', err));
+    }
 
     const remembered = getRememberedPassword();
     if (remembered) {
-        document.getElementById('lockRememberCheckbox').checked = !!localStorage.getItem('syncPassword');
-        unlock(remembered, !!localStorage.getItem('syncPassword'));
+        const onDevice = !!localStorage.getItem('syncPassword');
+        document.getElementById('lockRememberCheckbox').checked = onDevice;
+        unlock(remembered, onDevice);
     } else {
         showLockScreen();
     }
@@ -882,20 +981,6 @@ function migrateData(data) {
     return data;
 }
 
-// מעתיק את העו"ש מהשדה במסך אל הנתונים של החודש הנוכחי
-function syncBalanceFromInput() {
-    if (cloud.ready && allData[currentMonth]) {
-        allData[currentMonth].balance = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
-    }
-}
-
-// שומר את השינויים: מתזמן שמירה לענן (הנתונים עצמם לא נשמרים בדפדפן)
-function saveData() {
-    if (!cloud.ready) return;
-    syncBalanceFromInput();
-    localStorage.setItem('currentMonth', currentMonth);
-    scheduleCloudSave();
-}
 
 /**
  * מציב נתונים שנטענו (מהענן או מקובץ) כמצב הנוכחי של האפליקציה ומציג אותם
@@ -2339,7 +2424,7 @@ document.addEventListener('DOMContentLoaded', () => {
             e.target.classList.remove('active');
         }
     });
-    initCloud();
+    initStorage();
     document.body.classList.remove('preload');
 });
 
@@ -2953,7 +3038,7 @@ function showStorageStats() {
                 <strong><span style="font-size: 1.1em;">${dataSizeInKB} KB</span></strong> גודל הנתונים (לפני הצפנה)
             </li>
             <li style="margin-top: 20px; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 10px;">
-                הנתונים שמורים בענן בלבד, מוצפנים בסיסמה שלך.
+                הנתונים שמורים במכשיר, מוצפנים בסיסמה שלך. גיבוי אחרון לענן: ${formatDateTime(sync.meta.lastBackupAt)}
             </li>
         </ul>
     `;
