@@ -33,151 +33,459 @@ function sanitizeHTML(str) {
 }
 
 // ================================================
-// =========== פונקציות הצפנה ופענוח ===========
+// =========== אחסון בענן (מקור הנתונים היחיד) ===========
 // ================================================
-function encryptData(data, password) {
-    if (!password) return null;
+// הנתונים הפיננסיים לא נשמרים בדפדפן. הם נטענים מהענן אחרי הזנת סיסמה,
+// מוחזקים בזיכרון בלבד, ונשמרים חזרה לענן אוטומטית אחרי כל שינוי.
+// ב-localStorage נשמרות רק העדפות תצוגה (ערכת נושא, חודש אחרון שנצפה וכו').
+
+const CLOUD_SAVE_DELAY = 1500;
+const CLOUD_RETRY_DELAY = 10000;
+const PBKDF2_ITERATIONS = 310000;
+const AUTH_SALT = 'mazpen-auth-v1';
+const KEEPALIVE_MAX_BYTES = 60000; // לדפדפנים יש מגבלה של 64KB לבקשות keepalive
+
+const cloud = {
+    ready: false,          // האם הנתונים נטענו מהענן (לפני זה אסור לשמור!)
+    password: null,
+    token: null,           // טוקן גישה לשרת, נגזר מהסיסמה
+    key: null,             // מפתח ההצפנה (AES-GCM), נגזר מהסיסמה
+    salt: null,
+    version: null,         // גרסת הרשומה בענן שעליה מבוססים הנתונים שבזיכרון
+    lastSyncedJson: null,  // מה שנשמר לאחרונה, כדי לא לשמור כשאין שינוי
+    saving: false,
+    pending: false,
+    timer: null,
+    conflictVersion: null, // לא null = מכשיר אחר שמר בינתיים
+    clearLocalAfterSave: false
+};
+
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+function bytesToBase64(bytes) {
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+}
+
+function base64ToBytes(base64) {
+    return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+}
+
+async function importPasswordKey(password) {
+    return crypto.subtle.importKey('raw', textEncoder.encode(password), 'PBKDF2', false, ['deriveBits', 'deriveKey']);
+}
+
+async function deriveAuthToken(password) {
+    const baseKey = await importPasswordKey(password);
+    const bits = await crypto.subtle.deriveBits(
+        { name: 'PBKDF2', hash: 'SHA-256', salt: textEncoder.encode(AUTH_SALT), iterations: PBKDF2_ITERATIONS },
+        baseKey, 256
+    );
+    return bytesToBase64(new Uint8Array(bits)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function deriveEncryptionKey(password, salt) {
+    const baseKey = await importPasswordKey(password);
+    return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: PBKDF2_ITERATIONS },
+        baseKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+    );
+}
+
+async function encryptJson(json) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cloud.key, textEncoder.encode(json));
+    return JSON.stringify({
+        v: 2,
+        salt: bytesToBase64(cloud.salt),
+        iv: bytesToBase64(iv),
+        ct: bytesToBase64(new Uint8Array(cipher))
+    });
+}
+
+/**
+ * מפענח את המידע מהענן. תומך גם בפורמט הישן (CryptoJS).
+ * בפורמט החדש, שומר את המפתח וה-salt לשמירות הבאות.
+ * מחזיר null אם הסיסמה שגויה.
+ */
+async function decryptPayload(payload, password) {
+    let envelope = null;
+    try { envelope = JSON.parse(payload); } catch (e) { /* פורמט ישן */ }
+
+    if (envelope && envelope.v === 2) {
+        try {
+            const salt = base64ToBytes(envelope.salt);
+            const key = await deriveEncryptionKey(password, salt);
+            const plain = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: base64ToBytes(envelope.iv) }, key, base64ToBytes(envelope.ct)
+            );
+            cloud.key = key;
+            cloud.salt = salt;
+            return JSON.parse(textDecoder.decode(plain));
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // פורמט ישן - בשמירה הבאה הוא יוצפן מחדש בפורמט החדש
     try {
-        return CryptoJS.AES.encrypt(JSON.stringify(data), password).toString();
+        const decryptedString = CryptoJS.AES.decrypt(payload, password).toString(CryptoJS.enc.Utf8);
+        return decryptedString ? JSON.parse(decryptedString) : null;
     } catch (e) {
-        console.error("Encryption failed:", e);
         return null;
     }
 }
 
-function decryptData(encryptedData, password) {
-    if (!password || !encryptedData) return null;
+function cloudFetch(method, body, keepalive = false) {
+    const headers = { 'Authorization': `Bearer ${cloud.token}` };
+    if (body) headers['Content-Type'] = 'application/json';
+    return fetch('/api/data', { method, headers, body, keepalive, cache: 'no-store' });
+}
+
+/**
+ * טוען את הנתונים מהענן ומפענח אותם.
+ * מחזיר { status: 'ok' | 'wrong_password' | 'error', data }
+ */
+async function fetchCloudData(password) {
+    let response;
     try {
-        const bytes = CryptoJS.AES.decrypt(encryptedData, password);
-        const decryptedString = bytes.toString(CryptoJS.enc.Utf8);
-        if (!decryptedString) return null;
-        return JSON.parse(decryptedString);
+        response = await cloudFetch('GET');
     } catch (e) {
-        console.error("Decryption failed:", e);
-        return null;
+        return { status: 'error' };
     }
+    if (response.status === 401) return { status: 'wrong_password' };
+    if (!response.ok) return { status: 'error' };
+
+    const { data, version } = await response.json();
+    cloud.key = null;
+    let decrypted = null;
+    if (data) {
+        decrypted = await decryptPayload(data, password);
+        if (!decrypted) return { status: 'wrong_password' };
+    }
+    if (!cloud.key) {
+        cloud.salt = crypto.getRandomValues(new Uint8Array(16));
+        cloud.key = await deriveEncryptionKey(password, cloud.salt);
+    }
+    cloud.version = version;
+    return { status: 'ok', data: decrypted };
 }
 
-// ================================================
-// =========== פונקציות סנכרון לענן ===========
-// ================================================
-async function loadFromCloud(password) {
-    try {
-        // 💡 שינוי: קוראים לפונקציית השרת שלנו ב-Vercel
-        const response = await fetch('/api/load-data', {
-            method: 'GET'
-        });
-        // ----------------------------------------------------
-        
-        if (!response.ok) throw new Error('Failed to fetch data');
-        const cloudData = await response.json(); 
-        
-        if (Object.keys(cloudData.record).length === 0 || !cloudData.record.data) {
-            return 'empty';
-        }
-        const decryptedData = decryptData(cloudData.record.data, password);
-        if (decryptedData) {
-            allData = migrateData(decryptedData);
-
-            initializeTags();
-            currentMonth = Object.keys(allData).filter(k => k !== 'tags').sort().pop() || getCurrentMonthKey();
-            saveDataToLocal();
-            loadData();
-            return 'success';
-        } else {
-            return 'decryption_failed';
-        }
-    } catch (error) {
-        console.error("Error loading from cloud:", error);
-        return 'error';
-    }
+function hasUnsavedChanges() {
+    return cloud.ready && JSON.stringify(allData) !== cloud.lastSyncedJson;
 }
 
-async function saveToCloud(password) {
-    // 1. קודם כל שומרים את המצב הנוכחי לזיכרון המקומי בטלפון
-    saveDataToLocal();
-
-    // 2. עדכון חותמת זמן (בשביל הסדר הטוב, גם אם לא בודקים אותה)
-    if (!allData.settings) allData.settings = {};
-    allData.settings.lastUpdated = Date.now();
-
-    // 3. הצפנה
-    const encryptedString = encryptData(allData, password);
-    if (!encryptedString) return 'encryption_failed';
-    
-    // 4. שליחה לשרת
-    try {
-        const response = await fetch('/api/save-data', {
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ data: encryptedString }) 
-        });
-
-        if (!response.ok) throw new Error('Failed to save data');
-        return 'success';
-    } catch (error) {
-        console.error("Error saving to cloud:", error);
-        return 'error';
-    }
+function scheduleCloudSave(delay = CLOUD_SAVE_DELAY) {
+    if (!cloud.ready || cloud.conflictVersion !== null) return;
+    clearTimeout(cloud.timer);
+    cloud.timer = setTimeout(() => flushCloudSave(), delay);
 }
 
-async function handleLoadFromCloud() {
-    const password = document.getElementById('syncPassword').value;
-    if (!password) {
-        openConfirmModal('שגיאה', 'יש להזין סיסמת סנכרון.', closeConfirmModal);
-        return;
-    }
-    const loadBtn = document.getElementById('loadFromCloudBtn');
-    loadBtn.disabled = true;
-    const result = await loadFromCloud(password);
-    if (result === 'decryption_failed') {
-        openConfirmModal('שגיאה', 'הסיסמה שגויה.', closeConfirmModal);
-    } else if (result === 'error') {
-        openConfirmModal('שגיאה', 'אירעה שגיאת רשת בעת הטעינה.', closeConfirmModal);
-    } else if (result === 'success') {
-        openConfirmModal('הצלחה', 'הנתונים נטענו מהענן!', closeConfirmModal);
-    } else if (result === 'empty') {
-        openConfirmModal('מידע', 'מאגר הנתונים בענן ריק.', closeConfirmModal);
-    }
-    loadBtn.disabled = false;
-}
-
-async function handleSaveToCloud() {
-    const password = document.getElementById('syncPassword').value;
-    if (!password) {
-        openConfirmModal('שגיאה', 'יש להזין סיסמת סנכרון.', closeConfirmModal);
+async function flushCloudSave({ keepalive = false } = {}) {
+    clearTimeout(cloud.timer);
+    cloud.timer = null;
+    if (!cloud.ready || cloud.conflictVersion !== null) return;
+    if (cloud.saving) {
+        cloud.pending = true;
         return;
     }
 
-    const saveBtn = document.getElementById('saveToCloudBtn');
-    
-    // מצב טעינה (UI)
-    saveBtn.disabled = true;
-    saveBtn.classList.add('loading');
+    const json = JSON.stringify(allData);
+    if (json === cloud.lastSyncedJson) {
+        setSyncStatus('saved');
+        return;
+    }
 
-    // ביצוע השמירה
-    const result = await saveToCloud(password);
+    cloud.saving = true;
+    setSyncStatus('saving');
+    try {
+        const body = JSON.stringify({ data: await encryptJson(json), baseVersion: cloud.version });
+        const response = await cloudFetch('POST', body, keepalive && body.length < KEEPALIVE_MAX_BYTES);
 
-    // טיפול בתוצאות
-    saveBtn.classList.remove('loading');
-    
-    if (result === 'success') {
-        saveBtn.classList.add('success');
-        // אופציונלי: אפשר לוותר על המודל הזה אם רוצים חוויה עוד יותר שקטה
-        openConfirmModal('הצלחה', 'הנתונים נשמרו בענן בהצלחה!', closeConfirmModal);
-    } else if (result === 'encryption_failed') {
-        saveBtn.classList.add('error');
-        openConfirmModal('שגיאה', 'ההצפנה נכשלה. הנתונים לא נשמרו.', closeConfirmModal);
+        if (response.status === 409) {
+            const result = await response.json();
+            cloud.conflictVersion = result.version;
+            setSyncStatus('conflict');
+            showConflictDialog();
+            return;
+        }
+        if (!response.ok) throw new Error(`Save failed: ${response.status}`);
+
+        const result = await response.json();
+        cloud.version = result.version;
+        cloud.lastSyncedJson = json;
+        if (cloud.clearLocalAfterSave) {
+            localStorage.removeItem('budgetData');
+            cloud.clearLocalAfterSave = false;
+        }
+        setSyncStatus('saved');
+    } catch (error) {
+        console.error('Error saving to cloud:', error);
+        setSyncStatus('error');
+        clearTimeout(cloud.timer);
+        cloud.timer = setTimeout(() => flushCloudSave(), CLOUD_RETRY_DELAY);
+    } finally {
+        cloud.saving = false;
+        if (cloud.pending) {
+            cloud.pending = false;
+            scheduleCloudSave(300);
+        }
+    }
+}
+
+const syncStatusTexts = {
+    saved: 'נשמר בענן',
+    saving: 'שומר…',
+    error: 'לא נשמר!',
+    conflict: 'התנגשות'
+};
+
+function setSyncStatus(state) {
+    const btn = document.getElementById('syncStatusBtn');
+    if (!btn) return;
+    btn.dataset.state = state;
+    document.getElementById('syncStatusText').textContent = syncStatusTexts[state] || '';
+    const titles = {
+        saved: 'כל השינויים נשמרו בענן',
+        saving: 'שומר את השינויים בענן...',
+        error: 'השמירה לענן נכשלה. ננסה שוב אוטומטית - לחץ לנסות עכשיו',
+        conflict: 'הנתונים עודכנו ממכשיר אחר - לחץ לבחירה'
+    };
+    btn.title = titles[state] || '';
+}
+
+function handleSyncStatusClick() {
+    if (cloud.conflictVersion !== null) {
+        showConflictDialog();
     } else {
-        saveBtn.classList.add('error');
-        openConfirmModal('שגיאה', 'אירעה שגיאת תקשורת מול השרת.', closeConfirmModal);
+        syncBalanceFromInput();
+        flushCloudSave();
+    }
+}
+
+/**
+ * חלון חוסם עם כפתורי בחירה (לא נסגר ב-Escape או בלחיצה בחוץ).
+ * מחזיר Promise עם ה-value של הכפתור שנבחר.
+ */
+function showChoiceDialog(title, html, buttons) {
+    return new Promise(resolve => {
+        const screen = document.getElementById('choiceScreen');
+        document.getElementById('choiceTitle').textContent = title;
+        document.getElementById('choiceText').innerHTML = html;
+        const actions = document.getElementById('choiceActions');
+        actions.innerHTML = '';
+        buttons.forEach(({ label, value, style }) => {
+            const btn = document.createElement('button');
+            btn.className = `modal-btn ${style || 'modal-btn-cancel'}`;
+            btn.textContent = label;
+            btn.addEventListener('click', () => {
+                screen.classList.remove('active');
+                resolve(value);
+            });
+            actions.appendChild(btn);
+        });
+        screen.classList.add('active');
+    });
+}
+
+async function showConflictDialog() {
+    const choice = await showChoiceDialog(
+        'הנתונים עודכנו ממכשיר אחר',
+        'מאז שטענת את הנתונים, נשמרה בענן גרסה חדשה יותר (כנראה ממכשיר אחר).<br>איזו גרסה לשמור?',
+        [
+            { label: 'טען את הגרסה מהענן', value: 'cloud', style: 'modal-btn-save' },
+            { label: 'דרוס עם הגרסה שלי', value: 'mine' }
+        ]
+    );
+    if (cloud.conflictVersion === null) return; // כבר טופל בחלון אחר
+
+    if (choice === 'mine') {
+        cloud.version = cloud.conflictVersion;
+        cloud.conflictVersion = null;
+        flushCloudSave();
+        return;
     }
 
-    // איפוס הכפתור אחרי 2 שניות
-    setTimeout(() => {
-        saveBtn.disabled = false;
-        saveBtn.classList.remove('success', 'error');
-    }, 2000);
+    const result = await fetchCloudData(cloud.password);
+    if (result.status !== 'ok') {
+        openConfirmModal('שגיאה', 'לא הצלחנו לטעון את הנתונים מהענן. נסה שוב.', closeConfirmModal);
+        return;
+    }
+    cloud.conflictVersion = null;
+    applyLoadedData(result.data);
+    cloud.lastSyncedJson = JSON.stringify(allData);
+    previousState = null;
+    document.getElementById('undoBtn').disabled = true;
+    setSyncStatus('saved');
+}
+
+function getRememberedPassword() {
+    try {
+        return localStorage.getItem('syncPassword') || sessionStorage.getItem('syncPassword');
+    } catch (e) {
+        return null;
+    }
+}
+
+function rememberPassword(password, onThisDevice) {
+    try {
+        sessionStorage.setItem('syncPassword', password);
+        if (onThisDevice) localStorage.setItem('syncPassword', password);
+        else localStorage.removeItem('syncPassword');
+    } catch (e) { /* לא קריטי */ }
+}
+
+function forgetPassword() {
+    try {
+        localStorage.removeItem('syncPassword');
+        sessionStorage.removeItem('syncPassword');
+    } catch (e) { /* לא קריטי */ }
+}
+
+function showLockScreen(errorText = '') {
+    document.getElementById('lockScreen').classList.add('active');
+    document.getElementById('lockError').textContent = errorText;
+    document.getElementById('lockSubmitBtn').disabled = false;
+    document.getElementById('lockPasswordInput').focus();
+}
+
+/**
+ * כניסה: גוזר מפתחות מהסיסמה, טוען מהענן, ומטפל בנתונים ישנים שנשארו בטלפון.
+ */
+async function unlock(password, rememberOnDevice) {
+    const submitBtn = document.getElementById('lockSubmitBtn');
+    const lockError = document.getElementById('lockError');
+    submitBtn.disabled = true;
+    lockError.textContent = 'טוען מהענן…';
+
+    if (!window.crypto || !crypto.subtle) {
+        showLockScreen('הדפדפן לא תומך בהצפנה (האתר חייב לרוץ ב-https).');
+        return;
+    }
+
+    cloud.password = password;
+    cloud.token = await deriveAuthToken(password);
+    const result = await fetchCloudData(password);
+
+    if (result.status === 'wrong_password') {
+        forgetPassword();
+        showLockScreen('הסיסמה שגויה.');
+        return;
+    }
+    if (result.status === 'error') {
+        showLockScreen('שגיאת תקשורת מול השרת. בדוק את החיבור ונסה שוב.');
+        return;
+    }
+
+    let dataToUse = result.data;
+    let alreadySynced = !!result.data;
+
+    // נתונים ישנים ששמורים בטלפון מהגרסה הקודמת של האפליקציה
+    let localData = null;
+    try {
+        const localJson = localStorage.getItem('budgetData');
+        localData = localJson ? JSON.parse(localJson) : null;
+    } catch (e) { /* התעלם מנתונים פגומים */ }
+
+    if (localData && !result.data) {
+        dataToUse = localData;
+        alreadySynced = false;
+        cloud.clearLocalAfterSave = true; // נמחק מהטלפון רק אחרי שנשמר בענן
+    } else if (localData && result.data) {
+        const choice = await showChoiceDialog(
+            'נמצאו נתונים ישנים בטלפון',
+            'במכשיר הזה שמורים נתונים מהגרסה הקודמת, וגם בענן יש נתונים.<br>מעכשיו הנתונים יישמרו רק בענן. באיזו גרסה להשתמש?',
+            [
+                { label: 'הגרסה מהענן', value: 'cloud', style: 'modal-btn-save' },
+                { label: 'הגרסה מהטלפון (תדרוס את הענן)', value: 'local' }
+            ]
+        );
+        if (choice === 'local') {
+            dataToUse = localData;
+            alreadySynced = false;
+            cloud.clearLocalAfterSave = true;
+        } else {
+            localStorage.removeItem('budgetData');
+        }
+    } else if (!result.data) {
+        const choice = await showChoiceDialog(
+            'מאגר חדש בענן',
+            'המאגר בענן ריק. הסיסמה שהזנת תנעל אותו, ובלעדיה <b>אי אפשר לשחזר את הנתונים</b>.<br>לוודא שאתה זוכר אותה?',
+            [
+                { label: 'המשך עם הסיסמה הזו', value: 'ok', style: 'modal-btn-save' },
+                { label: 'חזור', value: 'back' }
+            ]
+        );
+        if (choice !== 'ok') {
+            showLockScreen('');
+            return;
+        }
+    }
+
+    const loadedJson = alreadySynced ? JSON.stringify(dataToUse) : null;
+    rememberPassword(password, rememberOnDevice);
+    cloud.ready = true;
+    applyLoadedData(dataToUse);
+    // אם המיגרציה לא שינתה כלום - אין מה לשמור. אחרת (או בנתונים חדשים) תתבצע שמירה.
+    cloud.lastSyncedJson = loadedJson;
+    document.getElementById('lockScreen').classList.remove('active');
+    document.getElementById('lockPasswordInput').value = '';
+    setSyncStatus('saved');
+    scheduleCloudSave(0);
+}
+
+async function lockApp() {
+    syncBalanceFromInput();
+    if (hasUnsavedChanges()) {
+        await flushCloudSave();
+        if (hasUnsavedChanges()) {
+            const confirmed = await showAsyncConfirm('יש שינויים שלא נשמרו', 'השמירה לענן נכשלה. אם תתנתק עכשיו, השינויים האחרונים יאבדו. להתנתק בכל זאת?');
+            if (!confirmed) return;
+        }
+    }
+    forgetPassword();
+    location.reload();
+}
+
+function initCloud() {
+    document.getElementById('lockForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const password = document.getElementById('lockPasswordInput').value;
+        if (!password) {
+            document.getElementById('lockError').textContent = 'יש להזין סיסמה.';
+            return;
+        }
+        unlock(password, document.getElementById('lockRememberCheckbox').checked);
+    });
+    document.getElementById('syncStatusBtn').addEventListener('click', handleSyncStatusClick);
+    document.getElementById('lockBtn').addEventListener('click', lockApp);
+
+    // שמירה אחרונה כשיוצאים מהאפליקציה (בטלפון beforeunload לא תמיד נקרא)
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            syncBalanceFromInput();
+            flushCloudSave({ keepalive: true });
+        }
+    });
+    window.addEventListener('beforeunload', (e) => {
+        syncBalanceFromInput();
+        if (hasUnsavedChanges() || cloud.saving) {
+            flushCloudSave({ keepalive: true });
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+    window.addEventListener('online', () => flushCloudSave());
+
+    const remembered = getRememberedPassword();
+    if (remembered) {
+        document.getElementById('lockRememberCheckbox').checked = !!localStorage.getItem('syncPassword');
+        unlock(remembered, !!localStorage.getItem('syncPassword'));
+    } else {
+        showLockScreen();
+    }
 }
 
 // ================================================
@@ -347,7 +655,7 @@ function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
 
     document.getElementById('currentBalanceInput').value = allData[currentMonth].balance || 0;
     closeNewMonthModal();
-    saveDataToLocal();
+    saveData();
     render();
 }
 
@@ -367,18 +675,15 @@ function navigateMonths(direction) {
     const currentIndex = existingMonths.indexOf(currentMonth);
 
     // 1. שמירת נתוני החודש הנוכחי (עם העו"ש שלו)
-    saveDataToLocal();
+    saveData();
 
     if (direction === 1) { // Next
         if (currentIndex < existingMonths.length - 1) {
             // 2. קבע את החודש החדש
             currentMonth = existingMonths[currentIndex + 1];
             
-            // 3. (התיקון) שמור את מפתח החודש החדש ב-localStorage *לפני* הטעינה
-            localStorage.setItem('currentMonth', currentMonth);
-            
-            // 4. טען את נתוני החודש החדש
-            loadData();
+            // 3. הצג את החודש החדש
+            showCurrentMonth();
         } else { // Reached the end
             const [year, month] = currentMonth.split('-').map(Number);
             const nextDate = new Date(year, month, 1);
@@ -390,11 +695,8 @@ function navigateMonths(direction) {
             // 2. קבע את החודש החדש
             currentMonth = existingMonths[currentIndex - 1];
 
-            // 3. (התיקון) שמור את מפתח החודש החדש ב-localStorage *לפני* הטעינה
-            localStorage.setItem('currentMonth', currentMonth);
-
-            // 4. טען את נתוני החודש החדש
-            loadData();
+            // 3. הצג את החודש החדש
+            showCurrentMonth();
         }
     }
 }
@@ -423,7 +725,7 @@ function resetCurrentMonth() {
     monthData.expenses = [];
     recalculateBalancesFrom(currentMonth);
     closeEditMonthModal();
-    saveDataToLocal();
+    saveData();
     render();
 }
 
@@ -451,7 +753,7 @@ function deleteCurrentMonth() {
     
     delete allData[monthToDelete];
     
-    if (Object.keys(allData).length === 1 && allData.tags) { // Only tags object left
+    if (!allData[newCurrentMonth]) { // נמחק החודש היחיד
         allData[newCurrentMonth] = { income: [], expenses: [], balance: 0 };
     }
     currentMonth = newCurrentMonth;
@@ -460,7 +762,7 @@ function deleteCurrentMonth() {
     document.getElementById('currentBalanceInput').value = allData[currentMonth].balance || 0;
 
     closeEditMonthModal();
-    saveDataToLocal();
+    saveData();
     render();
 }
 
@@ -475,18 +777,15 @@ function jumpToMonth(monthKey) {
     }
 
     // 1. שמירת נתוני החודש הנוכחי
-    saveDataToLocal(); 
+    saveData(); 
 
     // 2. קבע את החודש החדש
     currentMonth = monthKey;
-
-    // 3. (התיקון) שמור את מפתח החודש החדש ב-localStorage *לפני* הטעינה
-    localStorage.setItem('currentMonth', currentMonth);
     
     toggleMonthJumper();
     
-    // 4. טען את נתוני החודש החדש
-    loadData();
+    // 3. הצג את החודש החדש
+    showCurrentMonth();
 }
 
 function jumpToCurrentMonth() {
@@ -494,17 +793,14 @@ function jumpToCurrentMonth() {
     if (currentMonth === todayMonthKey) return;
     
     // 1. שמירת נתוני החודש הנוכחי
-    saveDataToLocal();
+    saveData();
 
     if (allData[todayMonthKey]) {
         // 2. קבע את החודש החדש
         currentMonth = todayMonthKey;
 
-        // 3. (התיקון) שמור את מפתח החודש החדש ב-localStorage *לפני* הטעינה
-        localStorage.setItem('currentMonth', currentMonth);
-
-        // 4. טען את נתוני החודש החדש
-        loadData();
+        // 3. הצג את החודש החדש
+        showCurrentMonth();
     } else {
         const existingMonths = getExistingMonths();
         const lastMonthKey = existingMonths[existingMonths.length - 1];
@@ -586,37 +882,54 @@ function migrateData(data) {
     return data;
 }
 
-function saveDataToLocal() {
-    if (allData[currentMonth]) {
+// מעתיק את העו"ש מהשדה במסך אל הנתונים של החודש הנוכחי
+function syncBalanceFromInput() {
+    if (cloud.ready && allData[currentMonth]) {
         allData[currentMonth].balance = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
     }
-    localStorage.setItem('budgetData', JSON.stringify(allData));
-    localStorage.setItem('currentMonth', currentMonth);
 }
 
-function loadData() {
-    const savedData = localStorage.getItem('budgetData');
-    let parsedData = savedData ? JSON.parse(savedData) : {};
-    allData = migrateData(parsedData);
+// שומר את השינויים: מתזמן שמירה לענן (הנתונים עצמם לא נשמרים בדפדפן)
+function saveData() {
+    if (!cloud.ready) return;
+    syncBalanceFromInput();
+    localStorage.setItem('currentMonth', currentMonth);
+    scheduleCloudSave();
+}
 
-    if (!allData.settings) allData.settings = {}; // אתחול אובייקט הגדרות
-    
-    initializeTags(); // Ensure tags object exists
+/**
+ * מציב נתונים שנטענו (מהענן או מקובץ) כמצב הנוכחי של האפליקציה ומציג אותם
+ */
+function applyLoadedData(data) {
+    allData = migrateData(data || {});
+    if (!allData.settings) allData.settings = {};
+    initializeTags();
 
-    currentMonth = localStorage.getItem('currentMonth') || getCurrentMonthKey();
-
-    if (!allData[currentMonth]) {
-        allData[currentMonth] = {
-            income: [],
-            expenses: [],
-            balance: 0
-        };
+    const months = getExistingMonths();
+    const savedMonth = localStorage.getItem('currentMonth');
+    const todayKey = getCurrentMonthKey();
+    if (savedMonth && months.includes(savedMonth)) {
+        currentMonth = savedMonth;
+    } else if (months.includes(todayKey) || months.length === 0) {
+        currentMonth = todayKey;
+    } else {
+        currentMonth = months[months.length - 1];
     }
-    
-    manualSortActive = { income: false, expense: false };
-    
-    document.getElementById('currentBalanceInput').value = allData[currentMonth].balance || 0;
+
     loadFilters();
+    showCurrentMonth();
+}
+
+/**
+ * מציג את החודש שב-currentMonth (יוצר אותו אם הוא לא קיים)
+ */
+function showCurrentMonth() {
+    if (!allData[currentMonth]) {
+        allData[currentMonth] = { income: [], expenses: [], balance: 0 };
+    }
+    localStorage.setItem('currentMonth', currentMonth);
+    manualSortActive = { income: false, expense: false };
+    document.getElementById('currentBalanceInput').value = allData[currentMonth].balance || 0;
     render();
 }
 
@@ -744,7 +1057,7 @@ function updateSummary() {
         summaryCard.classList.add('alert-success');
         if (alertIconDiv) alertIconDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
     }
-    debouncedSave();
+    saveData();
 }
 
 function updateLoansSummary() {
@@ -932,7 +1245,7 @@ function moveItem(event, type, id, direction) {
     } else if (direction === 'down' && index < arr.length - 1) {
         [arr[index], arr[index + 1]] = [arr[index + 1], arr[index]];
     }
-    saveDataToLocal();
+    saveData();
     render();
 }
 
@@ -994,11 +1307,8 @@ function importData(event) {
                 const imported = JSON.parse(e.target.result);
                 openConfirmModal('אישור ייבוא נתונים', 'האם לייבא את הנתונים? הנתונים הנוכחיים יוחלפו.', () => {
                     saveStateForUndo();
-                    allData = migrateData(imported); // <<< תיקון
-                    initializeTags(); // Ensure tags object exists after import
-                    currentMonth = getExistingMonths().pop() || getCurrentMonthKey();
-                    saveDataToLocal();
-                    loadData();
+                    applyLoadedData(imported);
+                    saveData();
                     closeConfirmModal();
                 });
             } catch (error) {
@@ -1080,7 +1390,7 @@ function deleteAllData() {
         allData[currentMonth] = { income: [], expenses: [], balance: 0 };
         initializeTags();
         document.getElementById('currentBalanceInput').value = 0;
-        saveDataToLocal();
+        saveData();
         render();
         closeConfirmModal();
     });
@@ -1313,7 +1623,7 @@ async function saveTransaction() {
         }
     }
 
-    saveDataToLocal();
+    saveData();
     render();
     closeModal();
 }
@@ -1345,7 +1655,7 @@ async function deleteTransaction(event, type, id) { // 💡 --- הפך ל-async 
                 }
             });
             
-            saveDataToLocal();
+            saveData();
             render();
         }
         // הפונקציה showAsyncConfirm סוגרת את חלון האישור
@@ -1366,7 +1676,7 @@ async function deleteTransaction(event, type, id) { // 💡 --- הפך ל-async 
         if (indexToDelete > -1) {
             list.splice(indexToDelete, 1);
         }
-        saveDataToLocal();
+        saveData();
         render();
     }
 }
@@ -1422,7 +1732,7 @@ function saveAmount(event, type) {
         saveStateForUndo();
         transaction.amount = newAmount;
     }
-    saveDataToLocal();
+    saveData();
     render();
 }
 
@@ -1476,7 +1786,7 @@ function handleApplyAction(type, id, action) {
     } else if (action === 'apply-zero') {
         transaction.amount = 0;
     }
-    saveDataToLocal();
+    saveData();
     render();
     closeApplyOptionsModal();
 }
@@ -1486,6 +1796,7 @@ function closeApplyOptionsModal() {
 }
 
 function saveStateForUndo() {
+    syncBalanceFromInput(); // כדי שהביטול יחזיר גם את העו"ש שבשדה
     previousState = JSON.parse(JSON.stringify(allData));
     document.getElementById('undoBtn').disabled = false;
 }
@@ -1495,8 +1806,8 @@ function undoLastAction() {
         allData = JSON.parse(JSON.stringify(previousState));
         previousState = null;
         document.getElementById('undoBtn').disabled = true;
-        saveDataToLocal();
-        loadData();
+        showCurrentMonth(); // מעדכן גם את שדה העו"ש לפני השמירה
+        saveData();
     }
 }
 
@@ -1841,7 +2152,7 @@ function addAllRecurringTransactions(type) {
     });
 
     if (addedCount > 0) {
-        saveDataToLocal();
+        saveData();
         render();
     }
     const dropdownId = type === 'income' ? 'recurringDropdownIncome' : 'recurringDropdownExpense';
@@ -1862,7 +2173,7 @@ function addRecurringTransaction(type, description) { // 💡 הפונקציה �
         const newTransaction = { ...transactionToAdd, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true };
         const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
         list.push(newTransaction);
-        saveDataToLocal();
+        saveData();
         render();
         
     } else if (type === 'expense' && transactionToAdd.type === 'variable') {
@@ -1919,7 +2230,7 @@ function handleListClick(event) {
         switch (action) {
             case 'toggle-check':
                 toggleCheck(event, type, id);
-                saveDataToLocal();
+                saveData();
                 render();
                 break;
             case 'edit':
@@ -1965,7 +2276,6 @@ function handleListClick(event) {
 document.addEventListener('DOMContentLoaded', () => {
     loadTheme();
     loadHeaderPinState();
-    loadData();
     loadCardStates();
     setupBalanceControls();
     setupTagsInputEventListeners(); // New
@@ -1980,8 +2290,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('nextMonthBtn').addEventListener('click', () => navigateMonths(1));
     document.getElementById('deleteMonthBtn').addEventListener('click', openEditMonthModal);
     document.getElementById('monthJumperBtn').addEventListener('click', toggleMonthJumper);
-    document.getElementById('loadFromCloudBtn').addEventListener('click', handleLoadFromCloud);
-    document.getElementById('saveToCloudBtn').addEventListener('click', handleSaveToCloud);
     document.getElementById('recurrenceCheckbox').addEventListener('change', (e) => {
         document.querySelector('.day-of-month-group').style.display = e.target.checked ? 'flex' : 'none';
     });
@@ -2031,6 +2339,7 @@ document.addEventListener('DOMContentLoaded', () => {
             e.target.classList.remove('active');
         }
     });
+    initCloud();
     document.body.classList.remove('preload');
 });
 
@@ -2299,7 +2608,7 @@ function editTag(tagId) {
     if (newName && newName.trim() !== tag.name) {
         saveStateForUndo();
         allData.tags[tagId].name = newName.trim();
-        saveDataToLocal();
+        saveData();
         render(); // Re-render main view
         openTagsManagementModal(); // Re-render the modal
     }
@@ -2329,7 +2638,7 @@ function deleteTag(tagId) {
             });
         });
 
-        saveDataToLocal();
+        saveData();
         render(); // Re-render main view
         closeConfirmModal();
         openTagsManagementModal(); // Re-render the modal
@@ -2342,7 +2651,7 @@ function updateTagColor(tagId, newColor) {
 
     saveStateForUndo(); // שמירת מצב לביטול
     allData.tags[tagId].color = newColor; // עדכון הצבע
-    saveDataToLocal(); // שמירה
+    saveData(); // שמירה
     render(); // רענון המסך הראשי כדי לראות את השינוי ברקע
     
     // אין צורך לרענן את המודל כולו כי האינפוט כבר מציג את הצבע החדש
@@ -2545,7 +2854,7 @@ function openShortfallModal() {
     calcFinalBalanceEl.className = finalBalanceEl.className;
     calcFinalBalanceEl.dataset.cleanValue = finalBalanceValue; // שמור ערך נקי לחישובים
 
-    // 3. טען את מסגרת האשראי השמורה מ-localStorage
+    // 3. טען את מסגרת האשראי השמורה (בענן; localStorage רק לתאימות לגרסה ישנה)
     const savedLimit = allData.settings.overdraftLimit || localStorage.getItem('overdraftLimit');
 
     const limitInput = document.getElementById('overdraftLimitInput');
@@ -2579,10 +2888,12 @@ function calculateShortfall() {
     // 💡 תיקון: קרא את העו"ש הסופי הנקי מה"תווית הנסתרת"
     const finalBalance = parseFloat(document.getElementById('calcFinalBalance').dataset.cleanValue) || 0;
     
-    // 2. שמור את המסגרת החיובית לעתיד
-    localStorage.setItem('overdraftLimit', positiveLimit);
-
-    allData.settings.overdraftLimit = positiveLimit; // שמירה גם לסנכרון ענן
+    // 2. שמור את המסגרת החיובית לעתיד (בענן)
+    if (allData.settings.overdraftLimit !== positiveLimit) {
+        allData.settings.overdraftLimit = positiveLimit;
+        localStorage.removeItem('overdraftLimit');
+        saveData();
+    }
 
     // 💡 --- התיקון המרכזי --- 💡
     // הפוך את המסגרת לשלילית לצורך החישוב
@@ -2612,7 +2923,7 @@ function calculateShortfall() {
  */
 function showStorageStats() {
     // 1. חישוב גודל האחסון
-    const dataString = localStorage.getItem('budgetData') || '';
+    const dataString = JSON.stringify(allData);
     const dataSizeInBytes = new Blob([dataString]).size;
     const dataSizeInKB = (dataSizeInBytes / 1024).toFixed(2); // המרה לקילובייט
 
@@ -2639,10 +2950,10 @@ function showStorageStats() {
                 <strong><span style="font-size: 1.1em;">${transactionCount}</span></strong> תנועות (הכנסות והוצאות)
             </li>
             <li style="margin-bottom: 10px;">
-                <strong><span style="font-size: 1.1em;">${dataSizeInKB} KB</span></strong> גודל אחסון בשימוש
+                <strong><span style="font-size: 1.1em;">${dataSizeInKB} KB</span></strong> גודל הנתונים (לפני הצפנה)
             </li>
             <li style="margin-top: 20px; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 10px;">
-                הגבול הממוצע בדפדפן הוא כ-5,000 KB (5MB).
+                הנתונים שמורים בענן בלבד, מוצפנים בסיסמה שלך.
             </li>
         </ul>
     `;
@@ -2650,24 +2961,3 @@ function showStorageStats() {
     // 5. פתיחת המודל הקיים במצב "מידע"
     openConfirmModal('סטטיסטיקת מערכת', statsHtml, closeConfirmModal);
 }
-
-// ================================================
-// =========== פונקציות ביצועים (Debounce) ===========
-// ================================================
-
-// 1. פונקציית עזר כללית להשהיה
-function debounce(func, wait) {
-    let timeout;
-    return function(...args) {
-        const context = this;
-        clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(context, args), wait);
-    };
-}
-
-// 2. יצירת גרסה "מושהית" של פונקציית השמירה
-// היא תחכה 1000 מילישניות (שנייה אחת) של שקט לפני שתשמור באמת
-const debouncedSave = debounce(() => {
-    saveDataToLocal();
-    console.log('Auto-saved data to local storage'); // אינדיקציה בקונסול
-}, 1000);

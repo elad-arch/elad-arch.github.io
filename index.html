@@ -49,12 +49,12 @@
                 <button class="control-btn-round btn-delete-month" id="deleteMonthBtn" title="מחק חודש נוכחי"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
                 
                 <div class="sync-wrapper">
-                    <input type="password" id="syncPassword" placeholder="סיסמת סנכרון">
-                    <button class="btn btn-sync" id="loadFromCloudBtn" title="טען מהענן">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <button class="sync-status" id="syncStatusBtn" data-state="saved" title="כל השינויים נשמרו בענן">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+                        <span id="syncStatusText">נשמר בענן</span>
                     </button>
-                    <button class="btn btn-sync" id="saveToCloudBtn" title="שמור בענן">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <button class="btn btn-sync" id="lockBtn" title="התנתק (נעל את האפליקציה)">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                     </button>
                 </div>
             </div>
@@ -518,6 +518,32 @@
         </div>
     </div>
 </div>
+    <div class="lock-screen active" id="lockScreen">
+        <div class="modal-content lock-content">
+            <div class="modal-header">המצפן הפיננסי</div>
+            <p class="lock-text">הנתונים שמורים בענן בלבד, מוצפנים בסיסמה שלך.<br>הזן את סיסמת הסנכרון כדי לטעון אותם.</p>
+            <form id="lockForm" autocomplete="on">
+                <input type="text" name="username" value="mazpen" autocomplete="username" hidden>
+                <input type="password" id="lockPasswordInput" class="form-input" placeholder="סיסמת סנכרון" autocomplete="current-password">
+                <label class="lock-remember">
+                    <input type="checkbox" id="lockRememberCheckbox">
+                    זכור את הסיסמה במכשיר הזה
+                </label>
+                <div class="lock-error" id="lockError" aria-live="polite">טוען…</div>
+                <button type="submit" class="modal-btn modal-btn-save lock-submit" id="lockSubmitBtn" disabled>כניסה</button>
+            </form>
+            <p class="lock-note">אם כבר שמרת בענן בעבר, השתמש באותה סיסמה. בפעם הראשונה, הסיסמה שתבחר תנעל את המאגר, ובלעדיה אי אפשר לשחזר את הנתונים.</p>
+        </div>
+    </div>
+
+    <div class="lock-screen" id="choiceScreen">
+        <div class="modal-content">
+            <div class="modal-header" id="choiceTitle"></div>
+            <p class="lock-text" id="choiceText"></p>
+            <div class="modal-actions choice-actions" id="choiceActions"></div>
+        </div>
+    </div>
+
     <script src="script.js"></script>
 </body>
 </html>
