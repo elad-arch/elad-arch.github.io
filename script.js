@@ -22,6 +22,18 @@ function safeCalc(amount) {
     return Math.round(amount * 100) / 100;
 }
 
+// ₪4,250 / ₪4,250.50 / -₪3,600 (אגורות רק כשיש)
+function formatMoney(value) {
+    const abs = Math.abs(safeCalc(value || 0));
+    const digits = Number.isInteger(abs) ? 0 : 2;
+    return `${value < 0 ? '-' : ''}₪${abs.toLocaleString('he-IL', { minimumFractionDigits: digits, maximumFractionDigits: 2 })}`;
+}
+
+function getMonthName(monthKey) {
+    const [year, month] = monthKey.split('-');
+    return new Date(year, month - 1).toLocaleString('he-IL', { month: 'long' });
+}
+
 // ================================================
 // =========== פונקציית אבטחה (Sanitization) ===========
 // ================================================
@@ -265,6 +277,8 @@ function updateBackupStatus() {
         overdue: `יש שינויים שלא גובו כבר ${unbackedDays} ימים, והם קיימים רק במכשיר הזה. לחץ לגיבוי. (${last})`
     };
     btn.title = titles[state] || last;
+    const menuLastBackup = document.getElementById('menuLastBackup');
+    if (menuLastBackup) menuLastBackup.textContent = `גיבוי אחרון: ${formatDateTime(sync.meta.lastBackupAt)}`;
 }
 
 // מציב נתונים שנטענו מהענן, שומר אותם במכשיר ומסמן אותם כמגובים
@@ -581,8 +595,8 @@ function initStorage() {
     });
     document.getElementById('lockResetBtn').addEventListener('click', resetLocalData);
     document.getElementById('backupBtn').addEventListener('click', backupToCloud);
-    document.getElementById('loadFromCloudBtn').addEventListener('click', loadFromCloud);
-    document.getElementById('lockBtn').addEventListener('click', lockApp);
+    document.getElementById('loadFromCloudBtn').addEventListener('click', () => { closeSheets(); loadFromCloud(); });
+    document.getElementById('lockBtn').addEventListener('click', () => { closeSheets(); lockApp(); });
 
     // שמירה אחרונה במכשיר כשיוצאים מהאפליקציה
     document.addEventListener('visibilitychange', () => {
@@ -715,18 +729,6 @@ function updateMonthDisplay() {
     const date = new Date(year, month - 1);
     const monthName = date.toLocaleString('he-IL', { month: 'long' });
     monthDisplay.textContent = `${monthName} ${year}`;
-    const todayMonthKey = getCurrentMonthKey();
-    if (currentMonth === todayMonthKey) {
-        monthDisplay.classList.add('disabled-jumper');
-        monthDisplay.classList.remove('is-jumper');
-        monthDisplay.onclick = null;
-        monthDisplay.title = "";
-    } else {
-        monthDisplay.classList.remove('disabled-jumper');
-        monthDisplay.classList.add('is-jumper');
-        monthDisplay.onclick = jumpToCurrentMonth;
-        monthDisplay.title = "קפוץ לחודש הנוכחי";
-    }
     updateNavButtons();
 }
 
@@ -738,12 +740,13 @@ function updateNavButtons() {
     prevMonthBtn.disabled = (currentIndex === 0);
     const isLastMonth = (currentIndex === existingMonths.length - 1);
     if (isLastMonth) {
-        nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+        nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
         nextMonthBtn.title = "צור חודש חדש";
     } else {
-        nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+        nextMonthBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>`;
         nextMonthBtn.title = "החודש הבא";
     }
+    nextMonthBtn.setAttribute('aria-label', nextMonthBtn.title);
 }
 
 function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
@@ -930,6 +933,13 @@ function populateMonthJumper() {
     if (!jumperList) return;
     const months = getExistingMonths().sort((a, b) => b.localeCompare(a));
     jumperList.innerHTML = '';
+    if (currentMonth !== getCurrentMonthKey()) {
+        const back = document.createElement('div');
+        back.classList.add('filter-option', 'jump-today');
+        back.textContent = 'חזרה לחודש הנוכחי';
+        back.onclick = () => { toggleMonthJumper(); jumpToCurrentMonth(); };
+        jumperList.appendChild(back);
+    }
     months.forEach(monthKey => {
         const [year, month] = monthKey.split('-');
         const date = new Date(year, month - 1);
@@ -1039,12 +1049,6 @@ function toggleLoanProgress(type, id) {
     }
 }
 
-const themeIcons = {
-    light: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
-    dark: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>',
-    auto: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z"/><path d="M12 2a10 10 0 1 0 10 10"/></svg>'
-};
-
 function selectTransactionType(type) {
     if ((type === 'loan' || type === 'variable') && currentType === 'income') return;
     selectedTransactionType = type;
@@ -1094,7 +1098,8 @@ function applyTheme(theme) {
 }
 
 function updateThemeButton(theme) {
-    document.getElementById('themeIconContainer').innerHTML = themeIcons[theme];
+    const labels = { auto: 'אוטומטי', light: 'בהיר', dark: 'כהה' };
+    document.getElementById('themeValue').textContent = labels[theme] || '';
 }
 
 function cycleTheme() {
@@ -1119,39 +1124,57 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
 });
 
 function updateSummary() {
-    const currentBalanceValue = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
-    const input = document.getElementById('currentBalanceInput');
-    input.classList.toggle('positive-balance', currentBalanceValue > 0);
-    input.classList.toggle('negative-balance', currentBalanceValue < 0);
-    const currentData = allData[currentMonth] || { income: [], expenses: [] };
+    if (!allData[currentMonth]) return;
+    syncBalanceFromInput();
+    const balance = allData[currentMonth].balance || 0;
+    const finalBalance = getMonthFinalBalance(currentMonth);
+    const limit = Math.abs(parseFloat(allData.settings && allData.settings.overdraftLimit) || 0);
 
-    // שימוש ב-safeCalc לסיכום הכנסות והוצאות
-    const incomeTotal = (currentData.income || []).reduce((sum, t) => safeCalc(sum + (t.checked ? t.amount : 0)), 0);
-    const expenseTotal = (currentData.expenses || []).reduce((sum, t) => safeCalc(sum + (t.checked ? t.amount : 0)), 0);
-    
-    // שימוש ב-safeCalc לחישוב היתרות
-    const balanceAfterExpenses = safeCalc(currentBalanceValue - expenseTotal);
-    const finalBalance = safeCalc(balanceAfterExpenses + incomeTotal);
-    
-    const afterExpensesEl = document.getElementById('balanceAfterExpenses');
-    afterExpensesEl.textContent = '₪' + balanceAfterExpenses.toLocaleString('he-IL', { minimumFractionDigits: 2 });
-    afterExpensesEl.className = 'summary-block-value ' + (balanceAfterExpenses >= 0 ? 'positive' : 'negative');
+    const balanceDisplay = document.getElementById('balanceDisplay');
+    balanceDisplay.textContent = formatMoney(balance);
+    balanceDisplay.classList.toggle('negative', balance < 0);
+
     const finalBalanceEl = document.getElementById('finalBalance');
-    finalBalanceEl.textContent = '₪' + finalBalance.toLocaleString('he-IL', { minimumFractionDigits: 2 });
-    finalBalanceEl.className = 'summary-block-value ' + (finalBalance >= 0 ? 'positive' : 'negative');
-    const summaryCard = document.querySelector('.summary-card');
-    summaryCard.classList.remove('alert-danger', 'alert-warning', 'alert-success');
-    const alertIconDiv = document.getElementById('alertIcon');
-    if (finalBalance < 0) {
-        summaryCard.classList.add('alert-danger');
-        if (alertIconDiv) alertIconDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
-    } else if (finalBalance >= 0 && finalBalance <= 1000) {
-        summaryCard.classList.add('alert-warning');
-        if (alertIconDiv) alertIconDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>';
+    finalBalanceEl.textContent = formatMoney(finalBalance);
+    finalBalanceEl.className = 'hero-tile-value ' + (finalBalance >= 0 ? 'positive' : 'negative');
+
+    // מרווח עד המסגרת
+    const marginEl = document.getElementById('overdraftMargin');
+    const margin = safeCalc(finalBalance + limit);
+    if (limit > 0) {
+        marginEl.textContent = formatMoney(margin);
+        marginEl.className = 'hero-tile-value ' + (margin < 0 ? 'negative' : (finalBalance < 0 ? 'warning' : ''));
     } else {
-        summaryCard.classList.add('alert-success');
-        if (alertIconDiv) alertIconDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
+        marginEl.innerHTML = '<button type="button" class="link-btn" onclick="openOverdraftModal()">הגדר מסגרת</button>';
+        marginEl.className = 'hero-tile-value';
     }
+    document.getElementById('menuOverdraftValue').textContent = limit > 0 ? formatMoney(limit) : 'לא הוגדרה';
+
+    // שורת הסטטוס
+    let state, text;
+    if (finalBalance >= 0) {
+        state = 'ok';
+        text = 'לא צפוי מינוס החודש';
+    } else if (limit > 0 && margin >= 0) {
+        state = 'warning';
+        text = 'צפוי מינוס, עדיין בתוך המסגרת';
+    } else if (limit > 0) {
+        state = 'danger';
+        text = `צפויה חריגה של ${formatMoney(-margin)} מהמסגרת`;
+    } else {
+        state = 'danger';
+        text = `צפוי מינוס של ${formatMoney(-finalBalance)}`;
+    }
+    const icons = {
+        ok: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>',
+        warning: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'
+    };
+    icons.danger = icons.warning;
+    const statusEl = document.getElementById('forecastStatus');
+    statusEl.dataset.state = state;
+    document.getElementById('forecastStatusIcon').innerHTML = icons[state];
+    document.getElementById('forecastStatusText').textContent = text;
+
     saveData();
 }
 
@@ -1230,20 +1253,7 @@ function updateLoansSummary() {
     document.getElementById('loansCollapsedSummary').innerHTML = `<span class="summary-label">יתרה לתשלום:</span> <span class="summary-value">₪${remainingBalance.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
 }
 
-function updateBalanceIndicator() {
-    const titleElement = document.querySelector('.header h1');
-    const indicator = document.getElementById('balanceIndicator');
-    const totalIncome = (allData[currentMonth]?.income || []).reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
-    const totalExpenses = (allData[currentMonth]?.expenses || []).reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
-    titleElement.classList.toggle('title-positive-balance', totalIncome > totalExpenses);
-    titleElement.classList.toggle('title-negative-balance', totalExpenses > totalIncome);
-    const total = totalIncome + totalExpenses;
-    let incomeRatio = 0.5;
-    if (total > 0) {
-        incomeRatio = totalIncome / total;
-    }
-    indicator.style.left = `${incomeRatio * 100}%`;
-}
+
 
 function toggleSortDropdown(type) {
     const otherDropdownId = type === 'income' ? 'filterDropdownIncome' : 'filterDropdownExpense';
@@ -1315,6 +1325,7 @@ function setSortMode(type, mode) {
     }
 
     document.querySelectorAll('.filter-dropdown').forEach(d => d.classList.remove('active'));
+    closeSheets();
     render();
 }
 
@@ -1376,6 +1387,7 @@ function setFilter(type, filter) {
 
     const dropdownId = type === 'income' ? 'filterDropdownIncome' : 'filterDropdownExpense';
     document.getElementById(dropdownId).classList.remove('active');
+    closeSheets();
     
     // אין צורך לעדכן 'selected' ידנית, התפריט ייבנה מחדש בפתיחה הבאה
     
@@ -1557,6 +1569,15 @@ function openModal(type, id = null) {
         title.textContent = type === 'income' ? 'הוספת הכנסה' : 'הוספת הוצאה';
         ['loanOriginalAmountInput', 'loanTotalInput', 'loanCurrentInput', 'loanBillingDayInput'].forEach(id => document.getElementById(id).value = '');
         selectTransactionType('onetime');
+    }
+
+    const extraActions = document.getElementById('editExtraActions');
+    extraActions.classList.toggle('hidden', !id);
+    if (id) {
+        const applyBtn = document.getElementById('txApplyBtn');
+        applyBtn.classList.toggle('hidden', isForecastMonth(currentMonth));
+        applyBtn.onclick = () => { closeModal(); openApplyOptionsModal(type, id); };
+        document.getElementById('txDeleteBtn').onclick = () => { closeModal(); deleteTransaction({ stopPropagation() {} }, type, id); };
     }
 
     modal.classList.add('active');
@@ -1913,6 +1934,28 @@ function undoLastAction() {
     }
 }
 
+function getFilterLabel(filter) {
+    if (filter.startsWith('tag-')) {
+        const tag = getTagById(filter.substring(4));
+        return tag ? tag.name : 'תג';
+    }
+    return { active: 'פעילות', inactive: 'לא פעילות', regular: 'קבועות', variable: 'כרטיס אשראי', loan: 'הלוואות' }[filter] || '';
+}
+
+// מעל הרשימה: כמה תנועות יש, או איזה סינון פעיל (עם כפתור לניקוי)
+function renderListCount(type) {
+    const el = document.getElementById(type === 'income' ? 'incomeCount' : 'expenseCount');
+    const filter = type === 'income' ? filterIncome : filterExpense;
+    if (filter !== 'all') {
+        el.innerHTML = `<button type="button" class="filter-chip" onclick="setFilter('${type}', 'all')" aria-label="נקה סינון">סינון: ${sanitizeHTML(getFilterLabel(filter))} <span aria-hidden="true">✕</span></button>`;
+        return;
+    }
+    const list = allData[currentMonth][type === 'income' ? 'income' : 'expenses'] || [];
+    const active = list.filter(t => t.checked).length;
+    const inactive = list.length - active;
+    el.textContent = list.length === 0 ? '' : `${active} פעילות${inactive ? ` · ${inactive} לא פעילות` : ''}`;
+}
+
 function render() {
     const currentData = allData[currentMonth];
     if (!currentData) return;
@@ -1936,7 +1979,6 @@ function render() {
     // --- UPDATE TOTALS & SUMMARY ---
     const incomeTotal = filteredIncome.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const expenseTotal = filteredExpenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
-    const finalBalance = getMonthFinalBalance(currentMonth); // תמיד לפי כל התנועות, בלי קשר לסינון
 
     const labelMap = {
         all: 'סה״כ',
@@ -1946,33 +1988,26 @@ function render() {
         inactive: 'סה״כ לא פעילות',
         loan: 'סה״כ הלוואות'
     };
-    document.getElementById('incomeTotalLabel').textContent = filterIncome === 'all' ? 'סה״כ הכנסות' : labelMap[filterIncome];
-    document.getElementById('expenseTotalLabel').textContent = filterExpense === 'all' ? 'סה״כ הוצאות' : labelMap[filterExpense];
+    document.getElementById('incomeTotalLabel').textContent = filterIncome === 'all' ? 'סה״כ הכנסות' : (labelMap[filterIncome] || 'סה״כ מסונן');
+    document.getElementById('expenseTotalLabel').textContent = filterExpense === 'all' ? 'סה״כ הוצאות' : (labelMap[filterExpense] || 'סה״כ מסונן');
+    document.getElementById('incomeTotal').textContent = formatMoney(incomeTotal);
+    document.getElementById('expenseTotal').textContent = formatMoney(expenseTotal);
+    // שורת הסיכום בתחתית הרשימה מוצגת רק כשיש סינון (אחרת הסכום כבר מופיע בלשונית)
+    document.getElementById('incomeFooter').classList.toggle('hidden', filterIncome === 'all');
+    document.getElementById('expenseFooter').classList.toggle('hidden', filterExpense === 'all');
 
-    const totalActiveIncome = (currentData.income || []).filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
-    const totalActiveExpenses = (currentData.expenses || []).filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
-
-    document.getElementById('incomeCollapsedSummary').innerHTML = `<span class="summary-label">סה״כ הכנסות:</span> <span class="summary-value">₪${totalActiveIncome.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
-    document.getElementById('expenseCollapsedSummary').innerHTML = `<span class="summary-label">סה״כ הוצאות:</span> <span class="summary-value">₪${totalActiveExpenses.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
-    document.getElementById('summaryCollapsedSummary').innerHTML = `<span class="summary-label">עו"ש צפוי:</span> <span class="summary-value ${finalBalance >= 0 ? 'positive' : 'negative'}">₪${finalBalance.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>`;
-    document.getElementById('incomeTotal').textContent = '₪' + incomeTotal.toLocaleString('he-IL', { minimumFractionDigits: 2 });
-    document.getElementById('expenseTotal').textContent = '₪' + expenseTotal.toLocaleString('he-IL', { minimumFractionDigits: 2 });
-
-    const isIncomeListEmpty = (currentData.income || []).length === 0;
-    const isExpenseListEmpty = (currentData.expenses || []).length === 0;
-    document.querySelector('.income-card .chart-btn').disabled = isIncomeListEmpty;
-    document.getElementById('sortBtnIncome').disabled = isIncomeListEmpty;
-    document.getElementById('filterBtnIncome').disabled = isIncomeListEmpty;
-    document.querySelector('.expense-card .chart-btn').disabled = isExpenseListEmpty;
-    document.getElementById('sortBtnExpense').disabled = isExpenseListEmpty;
-    document.getElementById('filterBtnExpense').disabled = isExpenseListEmpty;
+    const totalActiveIncome = (currentData.income || []).reduce((sum, t) => safeCalc(sum + (t.checked ? t.amount : 0)), 0);
+    const totalActiveExpenses = (currentData.expenses || []).reduce((sum, t) => safeCalc(sum + (t.checked ? t.amount : 0)), 0);
+    document.getElementById('tabIncomeTotal').textContent = formatMoney(totalActiveIncome);
+    document.getElementById('tabExpenseTotal').textContent = formatMoney(totalActiveExpenses);
+    renderListCount('income');
+    renderListCount('expense');
 
     populateMonthJumper();
     updateMonthDisplay();
-    updateBalanceIndicator();
     updateLoansSummary();
     updateSummary();
-    const deleteAllBtn = document.querySelector('.backup-controls .btn-delete-all-small:last-of-type');
+    const deleteAllBtn = document.getElementById('deleteAllBtn');
     const deleteMonthBtn = document.getElementById('deleteMonthBtn');
     const isDataEmpty = !currentData || ((currentData.income || []).length === 0 && (currentData.expenses || []).length === 0 && getExistingMonths().length <= 1);
     if (deleteAllBtn) deleteAllBtn.disabled = isDataEmpty;
@@ -2074,7 +2109,7 @@ function renderTransactionList(type, filteredData, allDataForIndices) {
             const amountPaid = t.amount * t.loanCurrent;
             const isComplete = t.loanCurrent >= t.loanTotal;
             progressBar = `
-                <div class="loan-progress ${t.isExpanded ? 'visible' : ''}">
+                <div class="loan-progress visible">
                     <div class="loan-progress-container"><div class="progress-bar-container"><div class="progress-bar-fill" style="width: ${percentage}%"></div></div>
                         <div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div>
                     </div>
@@ -2084,7 +2119,7 @@ function renderTransactionList(type, filteredData, allDataForIndices) {
         // --- תבנית HTML סופית (עם התאמה לסוג) ---
         const itemHTML = `
             <div class="transaction-item ${type === 'expense' && t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${t.completed ? 'completed' : ''}" 
-                 data-id="${t.id}" data-type="${type}" ${type === 'expense' && t.type === 'loan' ? `data-action="toggle-loan"` : ''}>
+                 data-id="${t.id}" data-type="${type}" data-action="edit">
                 
                 <div class="transaction-info">
                     <div class="transaction-check ${t.checked ? 'checked' : ''}" data-action="toggle-check"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
@@ -2102,22 +2137,17 @@ function renderTransactionList(type, filteredData, allDataForIndices) {
                     </div>
                 </div>
                 
-                <div class="transaction-amount" data-action="edit-amount">
-                    <span class="amount-text">₪${t.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>
+                <div class="transaction-amount" data-action="edit-amount" title="לחץ לשינוי מהיר של הסכום">
+                    <span class="amount-text" dir="ltr">${formatMoney(t.amount)}</span>
                     <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, '${type}')">
                 </div>
                 
-                <div class="item-controls">
-                    <div class="sort-buttons ${isManualActive ? 'visible' : ''}">
+                ${isManualActive ? `<div class="item-controls">
+                    <div class="sort-buttons visible">
                         <button class="sort-btn" data-action="move-up" ${originalIndex === 0 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
                         <button class="sort-btn" data-action="move-down" ${originalIndex === allDataForIndices.length - 1 ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
                     </div>
-                    <div class="transaction-actions">
-                        <button class="action-btn edit" data-action="edit" title="עריכה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
-                        <button class="action-btn apply" data-action="apply" title="החל על היתרה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m16 11-4 4-4-4"/><path d="M3 21h18"/></svg></button>
-                        <button class="action-btn delete" data-action="delete" title="מחיקה"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
-                    </div>
-                </div>
+                </div>` : ''}
             </div>
         `;
         
@@ -2262,6 +2292,7 @@ function addAllRecurringTransactions(type) {
     }
     const dropdownId = type === 'income' ? 'recurringDropdownIncome' : 'recurringDropdownExpense';
     document.getElementById(dropdownId).classList.remove('active');
+    closeSheets();
 }
 
 function addRecurringTransaction(type, description) { // 💡 הפונקציה מקבלת 'description'
@@ -2305,6 +2336,7 @@ function addRecurringTransaction(type, description) { // 💡 הפונקציה �
     // סגור את התפריט הנפתח בכל מקרה
     const dropdownId = type === 'income' ? 'recurringDropdownIncome' : 'recurringDropdownExpense';
     document.getElementById(dropdownId).classList.remove('active');
+    closeSheets();
 }
 
 // ================================================
@@ -2382,7 +2414,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadTheme();
     loadHeaderPinState();
     loadCardStates();
-    setupBalanceControls();
+    setupBalanceEditing();
     setupTagsInputEventListeners(); // New
     
     // ================================================
@@ -2393,7 +2425,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('prevMonthBtn').addEventListener('click', () => navigateMonths(-1));
     document.getElementById('nextMonthBtn').addEventListener('click', () => navigateMonths(1));
-    document.getElementById('deleteMonthBtn').addEventListener('click', openEditMonthModal);
+    document.getElementById('deleteMonthBtn').addEventListener('click', () => { closeSheets(); openEditMonthModal(); });
+    document.querySelectorAll('.sheet-overlay').forEach(overlay => {
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeSheets(); });
+    });
+    setActiveList(localStorage.getItem('activeList') === 'income' ? 'income' : 'expense');
     document.getElementById('monthJumperBtn').addEventListener('click', toggleMonthJumper);
     document.getElementById('recurrenceCheckbox').addEventListener('change', (e) => {
         document.querySelector('.day-of-month-group').style.display = e.target.checked ? 'flex' : 'none';
@@ -2428,10 +2464,11 @@ document.addEventListener('DOMContentLoaded', () => {
             closeTagsManagementModal();
             closeOverflowTagsModal();
             closeShortfallModal();
+            closeSheets();
         }
     });
     document.addEventListener('click', (e) => {
-        if (!e.target.closest('.dropdown-container')) {
+        if (!e.target.closest('.dropdown-container') && !e.target.closest('.sheet')) {
             document.getElementById('filterDropdownIncome').classList.remove('active');
             document.getElementById('filterDropdownExpense').classList.remove('active');
             document.getElementById('sortDropdownIncome').classList.remove('active');
@@ -2447,6 +2484,71 @@ document.addEventListener('DOMContentLoaded', () => {
     initStorage();
     document.body.classList.remove('preload');
 });
+
+// ================================================
+// =========== תפריטים נפתחים מלמטה (sheets) ===========
+// ================================================
+function openSheet(id) {
+    closeSheets();
+    const overlay = document.getElementById(id);
+    overlay.classList.add('active');
+    overlay.setAttribute('aria-hidden', 'false');
+    const firstButton = overlay.querySelector('.sheet-row:not([disabled]), .sheet-close');
+    if (firstButton) firstButton.focus();
+}
+
+function closeSheets() {
+    document.querySelectorAll('.sheet-overlay.active').forEach(overlay => {
+        overlay.classList.remove('active');
+        overlay.setAttribute('aria-hidden', 'true');
+    });
+    document.querySelectorAll('.sheet-panel').forEach(panel => panel.classList.remove('active'));
+}
+
+// ---------- לשוניות הוצאות / הכנסות ----------
+function setActiveList(type) {
+    const isIncome = type === 'income';
+    document.getElementById('incomeCard').classList.toggle('hidden', !isIncome);
+    document.getElementById('expenseCard').classList.toggle('hidden', isIncome);
+    document.getElementById('tabIncome').setAttribute('aria-selected', String(isIncome));
+    document.getElementById('tabExpense').setAttribute('aria-selected', String(!isIncome));
+    localStorage.setItem('activeList', isIncome ? 'income' : 'expense');
+}
+
+// ---------- תפריט ⋯ של הרשימה ----------
+let listMenuType = 'expense';
+
+function openListMenu(type) {
+    listMenuType = type;
+    const list = (allData[currentMonth] || {})[type === 'income' ? 'income' : 'expenses'] || [];
+    const isEmpty = list.length === 0;
+    document.getElementById('listMenuTitle').textContent = type === 'income' ? 'הכנסות' : 'הוצאות';
+    ['listMenuFilter', 'listMenuSort', 'listMenuChart'].forEach(id => { document.getElementById(id).disabled = isEmpty; });
+    const filter = type === 'income' ? filterIncome : filterExpense;
+    document.getElementById('listMenuFilterValue').textContent = filter === 'all' ? 'הכל' : getFilterLabel(filter);
+    const sortLabels = { manual: 'סידור אישי', alpha: 'א׳-ב׳', amount: 'לפי סכום', date: 'לפי תאריך' };
+    document.getElementById('listMenuSortValue').textContent = sortLabels[sortSettings[type].mode] || '';
+    showListMenuMain();
+    openSheet('listMenuSheet');
+}
+
+function showListMenuMain() {
+    document.querySelectorAll('.sheet-panel').forEach(panel => panel.classList.remove('active'));
+    document.getElementById('listMenuMain').classList.remove('hidden');
+    document.getElementById('listMenuBackBtn').classList.add('hidden');
+    document.getElementById('listMenuTitle').textContent = listMenuType === 'income' ? 'הכנסות' : 'הוצאות';
+}
+
+function openListMenuPanel(panel) {
+    document.querySelectorAll('.sheet-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('listMenuMain').classList.add('hidden');
+    document.getElementById('listMenuBackBtn').classList.remove('hidden');
+    const titles = { filter: 'סינון', sort: 'מיון', recurring: 'תנועות קבועות' };
+    document.getElementById('listMenuTitle').textContent = titles[panel];
+    if (panel === 'filter') toggleFilter(listMenuType);
+    else if (panel === 'sort') toggleSortDropdown(listMenuType);
+    else toggleRecurringDropdown(listMenuType);
+}
 
 function openConfirmModal(title, text, onConfirm, onCancel = closeConfirmModal) {
     document.getElementById('confirmModalTitle').textContent = title;
@@ -2488,36 +2590,70 @@ function showAsyncConfirm(title, text) {
 function updateBalanceMode() {
     const isForecast = isForecastMonth(currentMonth);
     const input = document.getElementById('currentBalanceInput');
-    if (isForecast) input.value = allData[currentMonth].balance || 0;
-    input.readOnly = isForecast;
-    document.getElementById('incrementBtn').disabled = isForecast;
-    document.getElementById('decrementBtn').disabled = isForecast;
-    document.getElementById('balanceStepSelector').classList.toggle('hidden', isForecast);
-    document.getElementById('balanceLabelText').textContent = isForecast ? 'עו״ש פתיחה (מחושב)' : 'עו״ש בבנק';
-    document.getElementById('balanceAutoNote').classList.toggle('hidden', !isForecast);
+    if (isForecast) {
+        input.value = allData[currentMonth].balance || 0;
+        finishBalanceEdit();
+    }
+    const months = getExistingMonths();
+    const prevMonth = months[months.indexOf(currentMonth) - 1];
+    const isCurrent = currentMonth === getCurrentMonthKey();
+    document.getElementById('balanceLabelText').textContent = isForecast ? 'עו״ש פתיחה' : (isCurrent ? 'עו״ש עכשיו' : 'עו״ש בבנק');
+    const chip = document.getElementById('balanceAutoChip');
+    chip.textContent = prevMonth ? `מחושב מ${getMonthName(prevMonth)}` : 'מחושב';
+    chip.classList.toggle('hidden', !isForecast);
+    const displayBtn = document.getElementById('balanceDisplayBtn');
+    displayBtn.disabled = isForecast;
+    displayBtn.classList.toggle('readonly', isForecast);
+    displayBtn.setAttribute('aria-label', isForecast ? 'העו״ש מחושב אוטומטית מהחודש הקודם' : 'עדכון העו״ש');
     document.body.classList.toggle('forecast-month', isForecast);
 }
 
-function setupBalanceControls() {
-    let currentStep = 100;
-    const balanceInput = document.getElementById('currentBalanceInput');
-    
-    const updateBalance = (amount) => {
-        let newBalance = safeCalc((parseFloat(balanceInput.value) || 0) + amount);
-        balanceInput.value = newBalance;
-        updateSummary();
-    };
-    
-    document.getElementById('incrementBtn').addEventListener('click', () => updateBalance(currentStep));
-    document.getElementById('decrementBtn').addEventListener('click', () => updateBalance(-currentStep));
-    
-    document.getElementById('balanceStepSelector').addEventListener('click', (e) => {
-        if (e.target.classList.contains('step-btn')) {
-            document.querySelector('#balanceStepSelector .active').classList.remove('active');
-            e.target.classList.add('active');
-            currentStep = parseInt(e.target.dataset.step, 10);
+// עריכת העו"ש: לחיצה על המספר פותחת שדה, ✓ / Enter / יציאה מהשדה שומרים, Escape מבטל
+let balanceBeforeEdit = null;
+
+function startBalanceEdit() {
+    if (isForecastMonth(currentMonth)) return;
+    const input = document.getElementById('currentBalanceInput');
+    balanceBeforeEdit = input.value;
+    document.getElementById('balanceDisplayBtn').classList.add('hidden');
+    document.getElementById('balanceEditRow').classList.remove('hidden');
+    document.getElementById('balanceEditHint').classList.remove('hidden');
+    input.focus();
+    input.select();
+}
+
+function finishBalanceEdit() {
+    if (balanceBeforeEdit === null) return;
+    balanceBeforeEdit = null;
+    document.getElementById('balanceDisplayBtn').classList.remove('hidden');
+    document.getElementById('balanceEditRow').classList.add('hidden');
+    document.getElementById('balanceEditHint').classList.add('hidden');
+    render();
+}
+
+function cancelBalanceEdit() {
+    if (balanceBeforeEdit === null) return;
+    document.getElementById('currentBalanceInput').value = balanceBeforeEdit;
+    updateSummary();
+    finishBalanceEdit();
+}
+
+function setupBalanceEditing() {
+    const input = document.getElementById('currentBalanceInput');
+    document.getElementById('balanceDisplayBtn').addEventListener('click', startBalanceEdit);
+    // mousedown במקום click כדי שה-blur של השדה לא יקדים את הלחיצה
+    document.getElementById('balanceSaveBtn').addEventListener('mousedown', (e) => e.preventDefault());
+    document.getElementById('balanceSaveBtn').addEventListener('click', finishBalanceEdit);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            finishBalanceEdit();
+        } else if (e.key === 'Escape') {
+            e.stopPropagation();
+            cancelBalanceEdit();
         }
     });
+    input.addEventListener('blur', finishBalanceEdit);
 }
 
 function toggleCard(button, cardName) {
@@ -2528,7 +2664,7 @@ function toggleCard(button, cardName) {
 }
 
 function loadCardStates() {
-    ['income', 'expense', 'loansSummary', 'summary'].forEach(cardName => {
+    ['loansSummary'].forEach(cardName => {
         if (localStorage.getItem(cardName + 'CardState') === 'collapsed') {
             const card = document.querySelector('.' + cardName.replace('Summary', '-summary') + '-card');
             if (card) {
@@ -2543,14 +2679,14 @@ function toggleHeaderPin() {
     const body = document.body;
     body.classList.toggle('header-pinned');
     const isPinned = body.classList.contains('header-pinned');
-    document.getElementById('pinHeaderBtn').classList.toggle('active', isPinned);
+    document.getElementById('pinValue').textContent = isPinned ? 'פעיל' : 'כבוי';
     localStorage.setItem('headerPinned', isPinned ? 'true' : 'false');
 }
 
 function loadHeaderPinState() {
     if (localStorage.getItem('headerPinned') === 'true') {
         document.body.classList.add('header-pinned');
-        document.getElementById('pinHeaderBtn').classList.add('active');
+        document.getElementById('pinValue').textContent = 'פעיל';
     }
 }
 
@@ -2962,31 +3098,12 @@ function cascadeLoanUpdates(sourceLoan, sourceMonthKey) {
 /**
  * פותח את חלון מחשבון החריגה
  */
-function openShortfallModal() {
-    // 1. קבל את העו"ש הסופי הצפוי מהדף הראשי
-    const finalBalanceEl = document.getElementById('finalBalance');
-    const finalBalanceValue = parseFloat(finalBalanceEl.textContent.replace(/[^\d.-]/g, '')) || 0;
-    
-    // 2. עדכן את הערך בחלון
-    const calcFinalBalanceEl = document.getElementById('calcFinalBalance');
-    calcFinalBalanceEl.textContent = finalBalanceEl.textContent; 
-    calcFinalBalanceEl.className = finalBalanceEl.className;
-    calcFinalBalanceEl.dataset.cleanValue = finalBalanceValue; // שמור ערך נקי לחישובים
-
-    // 3. טען את מסגרת האשראי השמורה (בענן; localStorage רק לתאימות לגרסה ישנה)
+function openOverdraftModal() {
+    // מסגרת האשראי נשמרת בהגדרות (localStorage רק לתאימות לגרסה ישנה)
     const savedLimit = allData.settings.overdraftLimit || localStorage.getItem('overdraftLimit');
-
-    const limitInput = document.getElementById('overdraftLimitInput');
-    
-    // 💡 תיקון: טען תמיד את הערך החיובי (כי המינוס קבוע)
-    // Math.abs() הופך -5000 (ישן) ל- 5000 (חדש)
-    limitInput.value = savedLimit ? Math.abs(parseFloat(savedLimit)) : 0; 
-
-    // 4. הפעל את החישוב בפעם הראשונה
-    calculateShortfall();
-    
-    // 5. פתח את החלון
+    document.getElementById('overdraftLimitInput').value = savedLimit ? Math.abs(parseFloat(savedLimit)) : '';
     document.getElementById('shortfallModal').classList.add('active');
+    document.getElementById('overdraftLimitInput').focus();
 }
 
 /**
@@ -2999,42 +3116,17 @@ function closeShortfallModal() {
 /**
  * 💡 מבצע את החישוב החדש (מינוס אוטומטי) 💡
  */
-function calculateShortfall() {
-    // 1. קרא את הערכים
-    // 💡 תיקון: קרא את הערך החיובי מהשדה
-    const positiveLimit = parseFloat(document.getElementById('overdraftLimitInput').value.replace(/,/g, '')) || 0;
-    
-    // 💡 תיקון: קרא את העו"ש הסופי הנקי מה"תווית הנסתרת"
-    const finalBalance = parseFloat(document.getElementById('calcFinalBalance').dataset.cleanValue) || 0;
-    
-    // 2. שמור את המסגרת החיובית לעתיד (בענן)
-    if (allData.settings.overdraftLimit !== positiveLimit) {
-        allData.settings.overdraftLimit = positiveLimit;
+function saveOverdraftLimit() {
+    const value = parseFloat(document.getElementById('overdraftLimitInput').value);
+    const limit = isNaN(value) ? 0 : Math.abs(value);
+    if (allData.settings.overdraftLimit !== limit) {
+        saveStateForUndo();
+        allData.settings.overdraftLimit = limit;
         localStorage.removeItem('overdraftLimit');
         saveData();
+        render();
     }
-
-    // 💡 --- התיקון המרכזי --- 💡
-    // הפוך את המסגרת לשלילית לצורך החישוב
-    const limit = -Math.abs(positiveLimit); // (לדוגמה: -5000)
-
-    // 3. חשב את החריגה (לדוגמה: limit = -5000, finalBalance = -9270)
-    // החישוב: (-5000) - (-9270) = 4270
-    let overdraftAmount = limit - finalBalance;
-    
-    // 4. הצג את התוצאה
-    const resultText = document.getElementById('overdraftAmountText');
-
-    if (overdraftAmount > 0) {
-        // --- מצב חריגה (אדום) ---
-        resultText.className = "summary-block-value negative"; // צבע אדום
-        resultText.textContent = `₪${overdraftAmount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}`;
-        
-    } else {
-        // --- מצב תקין (ירוק) ---
-        resultText.className = "summary-block-value positive"; // צבע ירוק
-        resultText.textContent = "₪0.00"; // הצג 0, כי אין חריגה
-    }
+    closeShortfallModal();
 }
 
 /**

@@ -2149,7 +2149,7 @@ input[type="file"] {
 }
 
 .hidden {
-    display: none;
+    display: none !important;
 }
 
 .filter-option {
@@ -2358,4 +2358,725 @@ input[type="file"] {
 
 .forecast-month .action-btn.apply {
     display: none;
+}
+
+/* =====================================================
+   עיצוב חדש: כותרת, כרטיס תחזית, לשוניות ותפריטים
+   ===================================================== */
+:root {
+    --accent: #5b3fc4;
+    --accent-soft: #ede9fb;
+    --accent-text: #44309a;
+    --surface-muted: #f1f2f6;
+    --tab-track: #e6e8ee;
+    --money-positive: #047857;
+    --money-negative: #b91c1c;
+    --money-warning: #b45309;
+    --status-ok-bg: #ecfdf5;
+    --status-ok-text: #065f46;
+    --status-warning-bg: #fff7e6;
+    --status-warning-text: #8a4b08;
+    --status-danger-bg: #fef2f2;
+    --status-danger-text: #991b1b;
+    --sheet-bg: #f1f2f6;
+}
+
+[data-theme="dark"] {
+    --accent: #8b7cf6;
+    --accent-soft: #312a55;
+    --accent-text: #d4ccff;
+    --surface-muted: #273449;
+    --tab-track: #0f172a;
+    --money-positive: #34d399;
+    --money-negative: #f87171;
+    --money-warning: #fbbf24;
+    --status-ok-bg: #0f2e25;
+    --status-ok-text: #6ee7b7;
+    --status-warning-bg: #3a2a0c;
+    --status-warning-text: #fcd34d;
+    --status-danger-bg: #3b1616;
+    --status-danger-text: #fca5a5;
+    --sheet-bg: #0f172a;
+}
+
+.container.app {
+    max-width: 560px;
+}
+
+/* --- כותרת --- */
+.app-header {
+    text-align: initial;
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+body.header-pinned .app-header {
+    margin: -20px -20px 16px;
+    padding: 12px 20px 8px;
+}
+
+.app-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.app-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+}
+
+.app-brand h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.app-topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.icon-btn {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 12px;
+    background: var(--card-bg);
+    color: var(--text-primary);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.icon-btn:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.icon-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.icon-btn.round {
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
+}
+
+.icon-btn.round:hover:not(:disabled) {
+    background: var(--item-hover);
+}
+
+.app-header .sync-status {
+    height: 36px;
+    padding: 0 12px;
+    font-size: 13px;
+}
+
+.month-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.month-title-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    font-family: inherit;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.month-title-btn:hover {
+    background: var(--item-hover);
+}
+
+#monthJumperList .jump-today {
+    color: var(--accent);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 8px 8px 0 0;
+}
+
+/* --- כרטיס התחזית --- */
+.hero-card {
+    background: var(--card-bg);
+    border-radius: 20px;
+    padding: 18px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.07);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.hero-balance {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.hero-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.auto-chip {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.hero-amount {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 52px;
+    padding: 0 8px;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    font-family: inherit;
+    font-size: 40px;
+    font-weight: 700;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.hero-amount:hover:not(:disabled) {
+    background: var(--item-hover);
+}
+
+.hero-amount .negative {
+    color: var(--money-negative);
+}
+
+.hero-edit-icon {
+    color: var(--text-secondary);
+}
+
+.hero-amount.readonly {
+    cursor: default;
+}
+
+.hero-amount.readonly .hero-edit-icon {
+    display: none;
+}
+
+.hero-edit {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.hero-edit.hidden {
+    display: none;
+}
+
+.hero-input {
+    flex: 1;
+    min-width: 0;
+    height: 60px;
+    box-sizing: border-box;
+    padding: 0 14px;
+    border: 2px solid var(--accent);
+    border-radius: 14px;
+    font-family: inherit;
+    font-size: 30px;
+    font-weight: 700;
+    text-align: center;
+    color: var(--text-primary);
+    background: var(--card-bg);
+    outline: none;
+}
+
+.hero-save {
+    width: 60px;
+    height: 60px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 14px;
+    background: var(--accent);
+    color: #ffffff;
+    cursor: pointer;
+}
+
+.hero-hint {
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.hero-tiles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.hero-tile {
+    padding: 12px;
+    background: var(--surface-muted);
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.hero-tile-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.hero-tile-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-align: right;
+}
+
+.hero-tile-value.positive { color: var(--money-positive); }
+.hero-tile-value.negative { color: var(--money-negative); }
+.hero-tile-value.warning { color: var(--money-warning); }
+
+.link-btn {
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.hero-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.hero-status-icon {
+    display: flex;
+}
+
+.hero-status[data-state="ok"] { background: var(--status-ok-bg); color: var(--status-ok-text); }
+.hero-status[data-state="warning"] { background: var(--status-warning-bg); color: var(--status-warning-text); }
+.hero-status[data-state="danger"] { background: var(--status-danger-bg); color: var(--status-danger-text); }
+
+/* --- לשוניות --- */
+.list-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+    padding: 4px;
+    margin-bottom: 12px;
+    background: var(--tab-track);
+    border-radius: 14px;
+}
+
+.list-tab {
+    height: 44px;
+    border: none;
+    border-radius: 11px;
+    background: transparent;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.list-tab[aria-selected="true"] {
+    background: var(--card-bg);
+    color: var(--text-primary);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+}
+
+.tab-total.negative { color: var(--money-negative); }
+.tab-total.positive { color: var(--money-positive); }
+
+/* --- רשימת תנועות --- */
+.list-card {
+    margin-bottom: 16px;
+}
+
+.list-card.hidden {
+    display: none;
+}
+
+.list-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.list-count {
+    font-size: 14px;
+    color: var(--text-secondary);
+    min-width: 0;
+}
+
+.list-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.primary-btn {
+    height: 44px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    border-radius: 12px;
+    background: var(--accent);
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.list-card .transaction-list {
+    min-height: 0;
+    gap: 0;
+    margin-bottom: 0;
+    background: var(--card-bg);
+    border-radius: 18px;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
+    overflow: hidden;
+}
+
+.list-card .transaction-wrapper {
+    border-radius: 0;
+    background: transparent;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.list-card .transaction-wrapper:last-child {
+    border-bottom: none;
+}
+
+.list-card .transaction-item {
+    cursor: pointer;
+    padding: 14px 16px;
+}
+
+.list-card .loan-progress.visible {
+    padding: 0 16px 14px;
+}
+
+.list-card .empty-state {
+    padding: 32px 16px;
+}
+
+.list-card .card-footer {
+    padding: 12px 4px 0;
+    border-top: none;
+}
+
+.list-card .card-footer.hidden {
+    display: none;
+}
+
+.list-card .transaction-amount .amount-text {
+    font-weight: 600;
+}
+
+.expense-card .amount-text { color: var(--money-negative); }
+.income-card .amount-text { color: var(--money-positive); }
+
+/* --- חלון עריכת תנועה: פעולות נוספות --- */
+.modal-extra-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
+.modal-extra-actions.hidden,
+.modal-link-btn.hidden {
+    display: none;
+}
+
+.modal-link-btn {
+    min-height: 44px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 10px;
+    background: var(--surface-muted);
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.modal-link-btn.danger {
+    color: var(--money-negative);
+}
+
+/* --- תפריטים נפתחים מלמטה --- */
+.sheet-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1040;
+    background: rgba(15, 23, 42, 0.45);
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.sheet-overlay.active {
+    display: flex;
+}
+
+.sheet {
+    width: 100%;
+    max-width: 560px;
+    max-height: 88vh;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    background: var(--sheet-bg);
+    border-radius: 24px 24px 0 0;
+    padding: 10px 16px calc(20px + env(safe-area-inset-bottom));
+    box-shadow: 0 -8px 30px rgba(15, 23, 42, 0.2);
+}
+
+.sheet-handle {
+    width: 40px;
+    height: 5px;
+    border-radius: 999px;
+    background: var(--border-color);
+    align-self: center;
+    margin-bottom: 8px;
+}
+
+.sheet-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.sheet-title {
+    flex: 1;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.sheet-close {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 999px;
+    background: var(--tab-track);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.sheet-close.hidden {
+    display: none;
+}
+
+.sheet-body {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+#listMenuMain {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+#listMenuMain.hidden {
+    display: none;
+}
+
+.sheet-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sheet-group-title {
+    padding: 0 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.sheet-list {
+    display: flex;
+    flex-direction: column;
+    background: var(--card-bg);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.sheet-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 50px;
+    padding: 0 16px;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    background: transparent;
+    font-family: inherit;
+    font-size: 16px;
+    color: var(--text-primary);
+    text-align: right;
+    cursor: pointer;
+}
+
+.sheet-row:last-child {
+    border-bottom: none;
+}
+
+.sheet-row:hover:not(:disabled) {
+    background: var(--item-hover);
+}
+
+.sheet-row:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.sheet-row.danger {
+    color: var(--money-negative);
+}
+
+.sheet-row-label {
+    flex: 1;
+}
+
+.sheet-row-value {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+/* תפריטי הסינון / המיון / התנועות הקבועות בתוך ה-sheet */
+.sheet .sheet-panel {
+    display: none;
+    position: static;
+    transform: none;
+    min-width: 0;
+    box-shadow: none;
+    border: none;
+    border-radius: 14px;
+    background: var(--card-bg);
+}
+
+.sheet .sheet-panel.active {
+    display: block;
+}
+
+.sheet .filter-option {
+    min-height: 44px;
+    font-size: 15px;
+}
+
+.sheet .filter-option.selected {
+    background: var(--accent);
+}
+
+/* חודש עתידי: אין "החל על העו״ש" */
+.forecast-month .action-btn.apply {
+    display: none;
+}
+
+.list-card .item-controls {
+    flex-basis: auto;
+    width: auto;
+    margin: 0;
+    padding: 0;
+    border: none;
+}
+
+.list-card .transaction-tags-container:empty {
+    display: none;
+}
+
+.hero-input {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.hero-input::-webkit-inner-spin-button,
+.hero-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }

@@ -3,7 +3,7 @@
 // ספריות חיצוניות: מהעותק השמור, ומתעדכנות ברקע.
 // קריאות ל-/api לא עוברות כאן לעולם.
 
-const CACHE_NAME = 'mazpen-v1';
+const CACHE_NAME = 'mazpen-v2';
 const APP_SHELL = [
     '/',
     '/index.html',
