@@ -50,7 +50,7 @@ const sync = {
     token: null,           // טוקן גישה לשרת, נגזר מהסיסמה רק כשצריך את הענן
     key: null,             // מפתח ההצפנה (AES-GCM), נגזר מהסיסמה
     salt: null,
-    meta: { cloudVersion: null, backedUpHash: null, lastBackupAt: null },
+    meta: { cloudVersion: null, backedUpHash: null, lastBackupAt: null, dirtySince: null },
     currentHash: null,     // טביעת אצבע של הנתונים כפי שנשמרו במכשיר
     lastLocalJson: null,
     localTimer: null,
@@ -152,7 +152,7 @@ function saveSyncMeta() {
 
 // מעתיק את העו"ש מהשדה במסך אל הנתונים של החודש הנוכחי
 function syncBalanceFromInput() {
-    if (sync.ready && allData[currentMonth]) {
+    if (sync.ready && allData[currentMonth] && !isForecastMonth(currentMonth)) {
         allData[currentMonth].balance = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
     }
 }
@@ -161,6 +161,7 @@ function syncBalanceFromInput() {
 function saveData() {
     if (!sync.ready) return;
     syncBalanceFromInput();
+    recomputeForecastBalances();
     localStorage.setItem('currentMonth', currentMonth);
     clearTimeout(sync.localTimer);
     sync.localTimer = setTimeout(flushLocalSave, LOCAL_SAVE_DELAY);
@@ -185,6 +186,7 @@ function flushLocalSave() {
             openConfirmModal('שגיאה', 'לא ניתן לשמור את הנתונים במכשיר (ייתכן שהאחסון מלא). מומלץ לגבות לענן או לייצא קובץ.', closeConfirmModal);
         }
         sync.currentHash = await sha256Hex(json);
+        trackDirtySince();
         updateBackupStatus();
     };
     sync.localSaving = sync.localSaving.then(run, run);
@@ -229,6 +231,22 @@ function isBackedUp() {
     return !!sync.currentHash && sync.currentHash === sync.meta.backedUpHash;
 }
 
+const BACKUP_REMINDER_DAYS = 3;
+
+// זוכר ממתי יש במכשיר שינויים שלא גובו (בשביל תזכורת הגיבוי)
+function trackDirtySince() {
+    const dirtySince = isBackedUp() ? null : (sync.meta.dirtySince || Date.now());
+    if (dirtySince !== sync.meta.dirtySince) {
+        sync.meta.dirtySince = dirtySince;
+        saveSyncMeta();
+    }
+}
+
+function getUnbackedDays() {
+    if (isBackedUp() || !sync.meta.dirtySince) return 0;
+    return Math.floor((Date.now() - sync.meta.dirtySince) / (24 * 60 * 60 * 1000));
+}
+
 function formatDateTime(timestamp) {
     if (!timestamp) return 'אף פעם';
     return new Date(timestamp).toLocaleString('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -237,11 +255,16 @@ function formatDateTime(timestamp) {
 function updateBackupStatus() {
     const btn = document.getElementById('backupBtn');
     if (!btn) return;
-    const state = sync.busy ? 'busy' : (isBackedUp() ? 'saved' : 'dirty');
+    const unbackedDays = getUnbackedDays();
+    const state = sync.busy ? 'busy' : (isBackedUp() ? 'saved' : (unbackedDays >= BACKUP_REMINDER_DAYS ? 'overdue' : 'dirty'));
     btn.dataset.state = state;
-    document.getElementById('backupBtnText').textContent = { saved: 'מגובה', dirty: 'גבה לענן', busy: 'רגע…' }[state];
+    document.getElementById('backupBtnText').textContent = { saved: 'מגובה', dirty: 'גבה לענן', overdue: 'גבה לענן!', busy: 'רגע…' }[state];
     const last = `גיבוי אחרון: ${formatDateTime(sync.meta.lastBackupAt)}`;
-    btn.title = state === 'dirty' ? `יש שינויים שעוד לא גובו לענן. לחץ לגיבוי. (${last})` : last;
+    const titles = {
+        dirty: `יש שינויים שעוד לא גובו לענן. לחץ לגיבוי. (${last})`,
+        overdue: `יש שינויים שלא גובו כבר ${unbackedDays} ימים, והם קיימים רק במכשיר הזה. לחץ לגיבוי. (${last})`
+    };
+    btn.title = titles[state] || last;
 }
 
 // מציב נתונים שנטענו מהענן, שומר אותם במכשיר ומסמן אותם כמגובים
@@ -252,6 +275,7 @@ async function applyCloudData(data, version) {
     await flushLocalSave();
     sync.meta.cloudVersion = version;
     sync.meta.backedUpHash = sync.currentHash;
+    sync.meta.dirtySince = null;
     saveSyncMeta();
     updateBackupStatus();
 }
@@ -299,6 +323,7 @@ async function backupToCloud() {
         sync.meta.cloudVersion = version;
         sync.meta.backedUpHash = await sha256Hex(json);
         sync.meta.lastBackupAt = Date.now();
+        sync.meta.dirtySince = null;
         saveSyncMeta();
     } catch (error) {
         console.error('Error backing up to cloud:', error);
@@ -452,7 +477,7 @@ async function unlock(password, rememberOnDevice) {
 
     sync.salt = crypto.getRandomValues(new Uint8Array(16));
     sync.key = await deriveEncryptionKey(password, sync.salt);
-    sync.meta = { cloudVersion: result.version, backedUpHash: null, lastBackupAt: null };
+    sync.meta = { cloudVersion: result.version, backedUpHash: null, lastBackupAt: null, dirtySince: null };
 
     // נתונים לא מוצפנים מגרסה ישנה של האפליקציה
     let legacyData = null;
@@ -498,6 +523,7 @@ async function unlock(password, rememberOnDevice) {
     await finishUnlock(dataToUse, rememberOnDevice);
     if (fromCloud) {
         sync.meta.backedUpHash = sync.currentHash;
+        sync.meta.dirtySince = null;
         saveSyncMeta();
         updateBackupStatus();
     }
@@ -563,6 +589,8 @@ function initStorage() {
         if (document.visibilityState === 'hidden') {
             syncBalanceFromInput();
             flushLocalSave();
+        } else {
+            updateBackupStatus(); // הזמן עבר - אולי צריך להציג תזכורת גיבוי
         }
     });
     window.addEventListener('beforeunload', (e) => {
@@ -652,6 +680,34 @@ function getExistingMonths() {
         .sort();
 }
 
+// ================================================
+// =========== תחזית רב-חודשית מקושרת ===========
+// ================================================
+// חודשים עתידיים (אחרי החודש של היום): העו"ש בתחילת החודש מחושב אוטומטית
+// מהעו"ש הצפוי בסוף החודש שלפניו, ומתעדכן מיד כשמשנים חודש קודם.
+// החודש הנוכחי וחודשים שעברו: העו"ש מוזן ידנית (העו"ש האמיתי בבנק).
+
+function isForecastMonth(monthKey) {
+    return monthKey > getCurrentMonthKey();
+}
+
+function getMonthFinalBalance(monthKey) {
+    const monthData = allData[monthKey];
+    if (!monthData) return 0;
+    const income = (monthData.income || []).reduce((sum, t) => safeCalc(sum + (t.checked ? t.amount : 0)), 0);
+    const expenses = (monthData.expenses || []).reduce((sum, t) => safeCalc(sum + (t.checked ? t.amount : 0)), 0);
+    return safeCalc((monthData.balance || 0) + income - expenses);
+}
+
+function recomputeForecastBalances() {
+    const months = getExistingMonths();
+    for (let i = 1; i < months.length; i++) {
+        if (isForecastMonth(months[i])) {
+            allData[months[i]].balance = getMonthFinalBalance(months[i - 1]);
+        }
+    }
+}
+
 function updateMonthDisplay() {
     if (!currentMonth) return;
     const monthDisplay = document.getElementById('currentMonthDisplay');
@@ -692,37 +748,15 @@ function updateNavButtons() {
 
 function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
     currentMonth = newMonthKey;
-    let previousMonthFinalBalance = 0;
-    if (allData[prevMonthKey]) {
-        const prevData = allData[prevMonthKey];
-        const prevBalance = prevData.balance || 0;
-        const prevIncome = (prevData.income || []).filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
-        const prevExpenses = (prevData.expenses || []).filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
-        previousMonthFinalBalance = Math.round(prevBalance + prevIncome - prevExpenses);
-    }
+    const previousMonthFinalBalance = allData[prevMonthKey] ? getMonthFinalBalance(prevMonthKey) : 0;
     allData[currentMonth] = { income: [], expenses: [], balance: previousMonthFinalBalance };
-    if (shouldCopy) {
-        const recurringIncomes = new Map();
-        const recurringExpenses = new Map();
-        const allMonthKeys = getExistingMonths();
-        allMonthKeys.forEach(monthKey => {
-            if (monthKey === currentMonth) return;
-            const monthData = allData[monthKey];
-            (monthData.income || []).forEach(t => {
-                if (t.recurrence && t.recurrence.isRecurring) {
-                    recurringIncomes.set(t.description, t);
-                }
-            });
-            (monthData.expenses || []).forEach(t => {
-                if (t.recurrence && t.recurrence.isRecurring) {
-                    recurringExpenses.set(t.description, t);
-                }
-            });
-        });
-        recurringIncomes.forEach(t => {
+    if (shouldCopy && allData[prevMonthKey]) {
+        // מעתיקים רק את התנועות הקבועות של החודש הקודם, כך שתנועה קבועה שנמחקה לא חוזרת
+        const prevData = allData[prevMonthKey];
+        (prevData.income || []).filter(t => t.recurrence && t.recurrence.isRecurring).forEach(t => {
             allData[currentMonth].income.push({ ...t, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true });
         });
-        recurringExpenses.forEach(t => {
+        (prevData.expenses || []).filter(t => t.type !== 'loan' && t.recurrence && t.recurrence.isRecurring).forEach(t => {
             allData[currentMonth].expenses.push({ ...t, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true });
         });
 
@@ -822,25 +856,9 @@ function resetCurrentMonth() {
     const monthData = allData[currentMonth];
     monthData.income = [];
     monthData.expenses = [];
-    recalculateBalancesFrom(currentMonth);
     closeEditMonthModal();
     saveData();
     render();
-}
-
-function recalculateBalancesFrom(startMonthKey) {
-    const allMonthKeys = getExistingMonths();
-    const startIndex = allMonthKeys.indexOf(startMonthKey);
-    if (startIndex === -1) return;
-    for (let i = startIndex + 1; i < allMonthKeys.length; i++) {
-        const monthToUpdateKey = allMonthKeys[i];
-        const prevMonthKey = allMonthKeys[i - 1];
-        const prevData = allData[prevMonthKey];
-        const prevBalance = prevData.balance || 0;
-        const prevIncome = (prevData.income || []).filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
-        const prevExpenses = (prevData.expenses || []).filter(t => t.checked).reduce((sum, t) => sum + t.amount, 0);
-        allData[monthToUpdateKey].balance = Math.round(prevBalance + prevIncome - prevExpenses);
-    }
 }
 
 function deleteCurrentMonth() {
@@ -934,29 +952,21 @@ function populateMonthJumper() {
 function migrateData(data) {
     if (!data) return {};
     const loanGroups = new Map(); // Key: description, Value: globalLoanId
+    const monthKeys = Object.keys(data).filter(key => key !== 'tags' && key !== 'settings' && data[key]).sort();
+    const loansOf = key => (Array.isArray(data[key].expenses) ? data[key].expenses : []).filter(t => t.type === 'loan');
 
-    // שלב 1: סרוק את כל הנתונים, מצא הלוואות וקבץ אותן לפי שם
-    Object.keys(data).forEach(key => {
-        if (key === 'tags' || !data[key]) return;
-        if (data[key].expenses && Array.isArray(data[key].expenses)) {
-            data[key].expenses.forEach(t => {
-                if (t.type === 'loan') {
-                    if (!loanGroups.has(t.description)) {
-                        // זו פעם ראשונה שפגשנו את שם ההלוואה הזה.
-                        // אם כבר יש לה ID גלובלי (כי היא נוצרה אחרי השדרוג הקודם), נשתמש בו.
-                        // אם לא, נייצר לה אחד חדש.
-                        const newGlobalId = t.globalLoanId || `loan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                        loanGroups.set(t.description, newGlobalId);
-                        t.globalLoanId = newGlobalId;
-                    } else {
-                        // פגשנו כבר הלוואה עם השם הזה.
-                        // נצמיד לה את אותו ID גלובלי כדי לקשר ביניהן.
-                        t.globalLoanId = loanGroups.get(t.description);
-                    }
-                }
-            });
+    // שלב 1: הלוואות ישנות בלי מזהה גלובלי מקושרות לפי שם.
+    // הלוואה שכבר יש לה מזהה משלה לא משתנה, כך ששתי הלוואות שונות עם אותו שם לא מתמזגות.
+    monthKeys.forEach(key => loansOf(key).forEach(t => {
+        if (t.globalLoanId && !loanGroups.has(t.description)) loanGroups.set(t.description, t.globalLoanId);
+    }));
+    monthKeys.forEach(key => loansOf(key).forEach(t => {
+        if (t.globalLoanId) return;
+        if (!loanGroups.has(t.description)) {
+            loanGroups.set(t.description, `loan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
         }
-    });
+        t.globalLoanId = loanGroups.get(t.description);
+    }));
 
     // שלב 2: בצע את שאר המיגרציות (כמו תיקון 'recurrence')
     Object.keys(data).forEach(key => {
@@ -1159,7 +1169,7 @@ function updateLoansSummary() {
         if (monthData && monthData.expenses) {
             const loansInMonth = monthData.expenses.filter(t => t.type === 'loan');
             loansInMonth.forEach(loan => {
-                latestLoansMap.set(loan.description, loan);
+                latestLoansMap.set(loan.globalLoanId || loan.description, loan);
             });
         }
     });
@@ -1845,6 +1855,11 @@ function openApplyOptionsModal(type, id) {
 }
 
 function handleApplyAction(type, id, action) {
+    if (isForecastMonth(currentMonth)) {
+        closeApplyOptionsModal();
+        openConfirmModal('מידע', 'בחודש עתידי העו"ש מחושב אוטומטית מהחודש הקודם, ולכן אי אפשר להחיל עליו תנועות.', closeConfirmModal);
+        return;
+    }
     saveStateForUndo();
     const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
     const transaction = list.find(t => t.id == id);
@@ -1870,6 +1885,8 @@ function handleApplyAction(type, id, action) {
         if (indexToDelete > -1) list.splice(indexToDelete, 1);
     } else if (action === 'apply-zero') {
         transaction.amount = 0;
+    } else if (action === 'apply-only') {
+        transaction.checked = false; // כבר ירד מהעו"ש, אז לא לספור אותו שוב בתחזית
     }
     saveData();
     render();
@@ -1900,6 +1917,10 @@ function render() {
     const currentData = allData[currentMonth];
     if (!currentData) return;
 
+    syncBalanceFromInput();
+    recomputeForecastBalances();
+    updateBalanceMode();
+
     // 1. קבל נתונים מפולטרים וממוינים
     const filteredIncome = getFilteredAndSortedData('income');
     const filteredExpenses = getFilteredAndSortedData('expense');
@@ -1915,8 +1936,7 @@ function render() {
     // --- UPDATE TOTALS & SUMMARY ---
     const incomeTotal = filteredIncome.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
     const expenseTotal = filteredExpenses.reduce((sum, t) => sum + (t.checked ? t.amount : 0), 0);
-    const currentBalanceValue = parseFloat(document.getElementById('currentBalanceInput').value) || 0;
-    const finalBalance = currentBalanceValue - expenseTotal + incomeTotal;
+    const finalBalance = getMonthFinalBalance(currentMonth); // תמיד לפי כל התנועות, בלי קשר לסינון
 
     const labelMap = {
         all: 'סה״כ',
@@ -2462,6 +2482,20 @@ function showAsyncConfirm(title, text) {
             () => { closeConfirmModal(); resolve(false); } // אם המשתמש לחץ "ביטול"
         );
     });
+}
+
+// בחודש עתידי שדה העו"ש מחושב ולא ניתן לעריכה
+function updateBalanceMode() {
+    const isForecast = isForecastMonth(currentMonth);
+    const input = document.getElementById('currentBalanceInput');
+    if (isForecast) input.value = allData[currentMonth].balance || 0;
+    input.readOnly = isForecast;
+    document.getElementById('incrementBtn').disabled = isForecast;
+    document.getElementById('decrementBtn').disabled = isForecast;
+    document.getElementById('balanceStepSelector').classList.toggle('hidden', isForecast);
+    document.getElementById('balanceLabelText').textContent = isForecast ? 'עו״ש פתיחה (מחושב)' : 'עו״ש בבנק';
+    document.getElementById('balanceAutoNote').classList.toggle('hidden', !isForecast);
+    document.body.classList.toggle('forecast-month', isForecast);
 }
 
 function setupBalanceControls() {

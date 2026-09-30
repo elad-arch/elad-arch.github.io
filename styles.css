@@ -325,6 +325,11 @@ body.header-pinned .header {
     color: #b45309;
 }
 
+.sync-status[data-state="overdue"] {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
 .sync-status[data-state="busy"] {
     background: #dbeafe;
     color: #1d4ed8;
@@ -2335,5 +2340,22 @@ input[type="file"] {
 }
 
 .lock-reset[hidden] {
+    display: none;
+}
+
+/* --- Forecast (future) months --- */
+.balance-auto-note {
+    width: 100%;
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.balance-control-input[readonly] {
+    cursor: default;
+    opacity: 0.85;
+}
+
+.forecast-month .action-btn.apply {
     display: none;
 }
