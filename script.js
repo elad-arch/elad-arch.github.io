@@ -1581,7 +1581,43 @@ function openModal(type, id = null) {
     }
 
     modal.classList.add('active');
+    modalInitialState = getModalFormState();
     descriptionInput.focus();
+}
+
+// ---------- הגנה מאיבוד שינויים בחלון התנועה ----------
+let modalInitialState = null;
+
+function getModalFormState() {
+    const ids = ['descriptionInput', 'amountInput', 'recurrenceDayInput', 'loanOriginalAmountInput', 'loanTotalInput', 'loanCurrentInput', 'loanBillingDayInput'];
+    return JSON.stringify({
+        values: ids.map(id => document.getElementById(id).value),
+        recurring: document.getElementById('recurrenceCheckbox').checked,
+        type: selectedTransactionType,
+        tags: currentTransactionTags.map(t => t.id)
+    });
+}
+
+// ביטול / Escape: אם שינית משהו - שואל לפני שסוגר
+async function requestCloseModal() {
+    const modal = document.getElementById('transactionModal');
+    if (!modal.classList.contains('active')) return;
+    if (document.getElementById('choiceScreen').classList.contains('active')) return;
+    if (getModalFormState() === modalInitialState) {
+        closeModal();
+        return;
+    }
+    const choice = await showChoiceDialog(
+        'יש שינויים שלא נשמרו',
+        'מה לעשות עם השינויים שהזנת?',
+        [
+            { label: 'שמור', value: 'save', style: 'modal-btn-save' },
+            { label: 'צא בלי לשמור', value: 'discard' },
+            { label: 'המשך לערוך', value: 'keep' }
+        ]
+    );
+    if (choice === 'save') saveTransaction();
+    else if (choice === 'discard') closeModal();
 }
 
 function closeModal() {
@@ -1733,6 +1769,7 @@ async function saveTransaction() {
             
             list.push(newTransaction);
             cascadeLoanUpdates(newTransaction, currentMonth);
+            backfillLoan(newTransaction, currentMonth);
 
         } else {
              list.push(newTransaction);
@@ -2119,14 +2156,15 @@ function renderTransactionList(type, filteredData, allDataForIndices) {
         
         // --- תבנית HTML סופית (עם התאמה לסוג) ---
         const itemHTML = `
-            <div class="transaction-item ${type === 'expense' && t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${t.completed ? 'completed' : ''}" 
+            <div class="transaction-item ${type === 'expense' && t.type === 'loan' ? 'loan-item' : ''} ${!t.checked ? 'inactive' : ''} ${t.completed && t.type !== 'loan' ? 'completed' : ''}" 
                  data-id="${t.id}" data-type="${type}" data-action="${type === 'expense' && t.type === 'loan' ? 'toggle-loan' : 'edit'}">
                 
                 <div class="transaction-info">
                     <div class="transaction-check ${t.checked ? 'checked' : ''}" data-action="toggle-check"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
                     <div class="transaction-details">
                         <div class="transaction-text">
-                            <span>${sanitizeHTML(t.description)}</span>
+                            <span class="transaction-name">${sanitizeHTML(t.description)}</span>
+                            ${t.type === 'loan' && t.loanTotal && t.loanCurrent >= t.loanTotal ? '<span class="last-payment-badge">חיוב אחרון</span>' : ''}
                             <div class="transaction-icons">${iconsHTML}</div>
                         </div>
                         <div class="transaction-tags-container">${tagsHTML}</div>
@@ -2140,7 +2178,7 @@ function renderTransactionList(type, filteredData, allDataForIndices) {
                 
                 <div class="transaction-amount" data-action="edit-amount" title="לחץ לשינוי מהיר של הסכום">
                     <span class="amount-text" dir="ltr">${formatMoney(t.amount)}</span>
-                    <input type="number" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, '${type}')">
+                    <input type="number" inputmode="decimal" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, '${type}')">
                 </div>
                 
                 ${isManualActive ? `<div class="item-controls">
@@ -2456,7 +2494,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            closeModal();
+            if (document.getElementById('choiceScreen').classList.contains('active')) return;
+            requestCloseModal();
             closeChartModal();
             closeConfirmModal();
             closeApplyOptionsModal();
@@ -2478,7 +2517,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('recurringDropdownIncome').classList.remove('active');
             document.getElementById('recurringDropdownExpense').classList.remove('active');
         }
-        if (e.target.classList.contains('modal')) {
+        if (e.target.classList.contains('modal') && e.target.id !== 'transactionModal') {
             e.target.classList.remove('active');
         }
     });
@@ -2655,6 +2694,15 @@ function setupBalanceEditing() {
         }
     });
     input.addEventListener('blur', finishBalanceEdit);
+    // במקלדת המספרים של אייפון אין מינוס - הכפתור הופך את הסימן
+    const signBtn = document.getElementById('balanceSignBtn');
+    signBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    signBtn.addEventListener('click', () => {
+        const value = parseFloat(input.value) || 0;
+        input.value = value === 0 ? '' : String(safeCalc(-value));
+        updateSummary();
+        input.focus();
+    });
 }
 
 function toggleCard(button, cardName) {
@@ -3032,6 +3080,36 @@ function populateFilterDropdown(type) {
     });
 }
 
+function monthDiff(fromKey, toKey) {
+    const [fy, fm] = fromKey.split('-').map(Number);
+    const [ty, tm] = toKey.split('-').map(Number);
+    return (ty - fy) * 12 + (tm - fm);
+}
+
+/**
+ * הלוואה חדשה שכבר באמצע (למשל תשלום 2 מתוך 3): מוסיף את התשלומים הקודמים
+ * לחודשים הקודמים שכבר קיימים, כ"לא פעילים" - החודשים האלה כבר עברו,
+ * אז הם מופיעים ברשימה בלי לשנות את התחזית שלהם. חודשים חסרים לא נוצרים.
+ */
+function backfillLoan(sourceLoan, sourceMonthKey) {
+    if (!sourceLoan || sourceLoan.type !== 'loan' || !sourceLoan.globalLoanId) return;
+    getExistingMonths().filter(key => key < sourceMonthKey).forEach(monthKey => {
+        const paymentNumber = sourceLoan.loanCurrent - monthDiff(monthKey, sourceMonthKey);
+        if (paymentNumber < 1) return;
+        const monthData = allData[monthKey];
+        if (!monthData.expenses) monthData.expenses = [];
+        if (monthData.expenses.some(t => t.globalLoanId === sourceLoan.globalLoanId)) return;
+        monthData.expenses.push({
+            ...sourceLoan,
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            loanCurrent: paymentNumber,
+            completed: false,
+            checked: false,
+            isExpanded: false
+        });
+    });
+}
+
 /**
  * "שרשור" הלוואות קדימה
  * מקבל הלוואת מקור ומעדכן/יוצר אותה בכל החודשים העתידיים שכבר קיימים
@@ -3052,10 +3130,18 @@ function cascadeLoanUpdates(sourceLoan, sourceMonthKey) {
         const futureMonthKey = allMonthKeys[i];
         const futureMonthData = allData[futureMonthKey];
         
-        const paymentNumber = sourceLoan.loanCurrent + (i - startIndex);
+        // מספר התשלום לפי מרחק החודשים בפועל (גם אם חסר חודש באמצע)
+        const paymentNumber = sourceLoan.loanCurrent + monthDiff(sourceMonthKey, futureMonthKey);
         const isCompleted = paymentNumber >= sourceLoan.loanTotal;
+        if (!futureMonthData.expenses) futureMonthData.expenses = [];
 
         let targetLoan = futureMonthData.expenses.find(t => t.globalLoanId === globalId);
+
+        if (paymentNumber > sourceLoan.loanTotal) {
+            // ההלוואה כבר הסתיימה לפני החודש הזה (למשל אחרי קיצור מספר התשלומים)
+            if (targetLoan) futureMonthData.expenses = futureMonthData.expenses.filter(t => t.globalLoanId !== globalId);
+            continue;
+        }
 
         if (targetLoan) {
             // --- מצאנו הלוואה קיימת, עדכן אותה ---
@@ -3074,9 +3160,8 @@ function cascadeLoanUpdates(sourceLoan, sourceMonthKey) {
             targetLoan.completed = isCompleted;
             targetLoan.checked = true; 
 
-        } else if (!isCompleted) {
-            // --- לא מצאנו הלוואה, והיא עדיין לא הושלמה ---
-            // --- ניצור עותק חדש בחודש העתידי ---
+        } else {
+            // --- לא מצאנו הלוואה בחודש הזה: ניצור עותק (כולל החיוב האחרון) ---
             
             // 💡 הפונקציה { ...sourceLoan } תעתיק אוטומטית את loanBillingDay
             const newLoan = { ...sourceLoan }; 
@@ -3085,8 +3170,9 @@ function cascadeLoanUpdates(sourceLoan, sourceMonthKey) {
             newLoan.globalLoanId = globalId; 
             
             newLoan.loanCurrent = paymentNumber;
-            newLoan.completed = false;
-            newLoan.checked = true; 
+            newLoan.completed = isCompleted;
+            newLoan.checked = true;
+            newLoan.isExpanded = false;
 
             futureMonthData.expenses.push(newLoan);
         }

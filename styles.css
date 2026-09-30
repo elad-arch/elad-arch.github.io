@@ -3105,3 +3105,69 @@ body.header-pinned .app-header {
 .list-card .loan-progress.visible {
     max-height: 200px;
 }
+
+/* שם ארוך יורד שורה במקום להיחתך */
+.list-card .transaction-info {
+    min-width: 0;
+}
+
+.list-card .transaction-text span.transaction-name {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.list-card .transaction-amount {
+    flex-shrink: 0;
+}
+
+.last-payment-badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--status-warning-bg);
+    color: var(--status-warning-text);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.hero-sign {
+    width: 52px;
+    height: 60px;
+    flex-shrink: 0;
+    border: 2px solid var(--border-color);
+    border-radius: 14px;
+    background: var(--surface-muted);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 26px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.list-card .transaction-item {
+    flex-wrap: nowrap;
+    gap: 8px;
+}
+
+.list-card .transaction-info {
+    flex: 1;
+    width: auto;
+}
+
+.list-card .transaction-amount {
+    margin-left: 0;
+}
+
+.list-card .transaction-text {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+}
+
+.list-card .transaction-text span.transaction-name {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.list-card .transaction-icons:empty {
+    display: none;
+}

@@ -68,6 +68,7 @@
                     <svg class="hero-edit-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                 </button>
                 <div class="hero-edit hidden" id="balanceEditRow">
+                    <button type="button" class="hero-sign" id="balanceSignBtn" aria-label="החלף בין פלוס למינוס" title="פלוס / מינוס">±</button>
                     <input type="number" inputmode="decimal" step="0.01" id="currentBalanceInput" class="hero-input" dir="ltr" oninput="updateSummary()" aria-label="עו״ש עכשיו" placeholder="0">
                     <button type="button" class="hero-save" id="balanceSaveBtn" aria-label="שמור">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
@@ -337,7 +338,7 @@
             </div>
             <div class="form-group">
                 <label class="form-label" id="amountLabel">סכום (₪)</label>
-                <input type="number" class="form-input" id="amountInput" placeholder="0.00" step="0.01">
+                <input type="number" class="form-input" inputmode="decimal" id="amountInput" placeholder="0.00" step="0.01">
             </div>
             
             <div class="form-group">
@@ -351,20 +352,20 @@
             <div class="loan-fields" id="loanFields">
                 <div class="form-group">
                     <label class="form-label">סכום הלוואה מקורי (₪)</label>
-                    <input type="number" class="form-input" id="loanOriginalAmountInput" placeholder="10000.00" step="0.01">
+                    <input type="number" class="form-input" inputmode="decimal" id="loanOriginalAmountInput" placeholder="10000.00" step="0.01">
                 </div>
                 <div class="form-group">
                     <label class="form-label">יום חיוב בחודש</label>
-                    <input type="number" class="form-input" id="loanBillingDayInput" placeholder="למשל: 10 (עבור ה-10 לחודש)" min="1" max="31">
+                    <input type="number" class="form-input" inputmode="numeric" id="loanBillingDayInput" placeholder="למשל: 10 (עבור ה-10 לחודש)" min="1" max="31">
                 </div>
                 <div class="loan-row">
                     <div class="form-group" style="margin-bottom: 0;">
                         <label class="form-label">מספר תשלומים כולל</label>
-                        <input type="number" class="form-input" id="loanTotalInput" placeholder="20" min="1">
+                        <input type="number" class="form-input" inputmode="numeric" id="loanTotalInput" placeholder="20" min="1">
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
                         <label class="form-label">תשלום נוכחי</label>
-                        <input type="number" class="form-input" id="loanCurrentInput" placeholder="0" min="0">
+                        <input type="number" class="form-input" inputmode="numeric" id="loanCurrentInput" placeholder="0" min="0">
                     </div>
                 </div>
             </div>
@@ -376,14 +377,14 @@
                 </label>
                 <div class="day-of-month-group">
                     <label for="recurrenceDayInput">חזור כל</label>
-                    <input type="number" id="recurrenceDayInput" class="form-input" min="1" max="31" placeholder="יום">
+                    <input type="number" inputmode="numeric" id="recurrenceDayInput" class="form-input" min="1" max="31" placeholder="יום">
                     <label>לחודש</label>
                 </div>
             </div>
 
             <div class="modal-actions">
                 <button class="modal-btn modal-btn-save" onclick="saveTransaction()">שמור</button>
-                <button class="modal-btn modal-btn-cancel" onclick="closeModal()">ביטול</button>
+                <button class="modal-btn modal-btn-cancel" onclick="requestCloseModal()">ביטול</button>
             </div>
             <div class="modal-extra-actions hidden" id="editExtraActions">
                 <button type="button" class="modal-link-btn" id="txApplyBtn">החל על העו״ש</button>
