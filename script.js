@@ -756,11 +756,12 @@ function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
     if (shouldCopy && allData[prevMonthKey]) {
         // מעתיקים רק את התנועות הקבועות של החודש הקודם, כך שתנועה קבועה שנמחקה לא חוזרת
         const prevData = allData[prevMonthKey];
-        (prevData.income || []).filter(t => t.recurrence && t.recurrence.isRecurring).forEach(t => {
-            allData[currentMonth].income.push({ ...t, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true });
+        // (לפי הערכים הרגילים של הסדרה - חריגה של חודש אחד לא עוברת הלאה)
+        (prevData.income || []).filter(t => isSeriesRecurring(t)).forEach(t => {
+            allData[currentMonth].income.push(instanceFromSeries(t));
         });
-        (prevData.expenses || []).filter(t => t.type !== 'loan' && t.recurrence && t.recurrence.isRecurring).forEach(t => {
-            allData[currentMonth].expenses.push({ ...t, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true });
+        (prevData.expenses || []).filter(t => t.type !== 'loan' && isSeriesRecurring(t)).forEach(t => {
+            allData[currentMonth].expenses.push(instanceFromSeries(t));
         });
 
         if (allData[prevMonthKey] && allData[prevMonthKey].expenses) {
@@ -977,6 +978,25 @@ function migrateData(data) {
         }
         t.globalLoanId = loanGroups.get(t.description);
     }));
+
+    // שלב 1ב: תנועות קבועות ישנות בלי recurringId מקושרות לפי שם, בין חודשים צמודים.
+    // אם באותו חודש יש שתי תנועות קבועות עם אותו שם - לא מקשרים (כדי לא לטעות).
+    ['income', 'expenses'].forEach(listKey => {
+        let previousIds = new Map(); // description -> recurringId בחודש הקודם
+        monthKeys.forEach(key => {
+            const items = (Array.isArray(data[key][listKey]) ? data[key][listKey] : [])
+                .filter(t => t.type !== 'loan' && t.recurrence && t.recurrence.isRecurring);
+            const counts = new Map();
+            items.forEach(t => counts.set(t.description, (counts.get(t.description) || 0) + 1));
+            const currentIds = new Map();
+            items.forEach(t => {
+                if (counts.get(t.description) !== 1) return;
+                if (!t.recurringId) t.recurringId = previousIds.get(t.description) || newRecurringId();
+                currentIds.set(t.description, t.recurringId);
+            });
+            previousIds = currentIds;
+        });
+    });
 
     // שלב 2: בצע את שאר המיגרציות (כמו תיקון 'recurrence')
     Object.keys(data).forEach(key => {
@@ -1582,7 +1602,8 @@ function openModal(type, id = null) {
 
     modal.classList.add('active');
     modalInitialState = getModalFormState();
-    descriptionInput.focus();
+    // בהוספה חדשה - ישר להקלדה. בעריכה - בלי מקלדת, עד שבוחרים שדה
+    if (!id) descriptionInput.focus();
 }
 
 // ---------- הגנה מאיבוד שינויים בחלון התנועה ----------
@@ -1728,6 +1749,46 @@ async function saveTransaction() {
             if (updatedTransaction.type === 'loan') {
                 updatedTransaction.checked = true;
             }
+
+            // --- תנועה קבועה: רק בחודש הזה, או גם בחודשים הבאים ---
+            if (updatedTransaction.type !== 'loan') {
+                const listKey = currentType === 'income' ? 'income' : 'expenses';
+                const wasSeries = !!existingTransaction.recurringId && isSeriesRecurring(existingTransaction);
+                const changed = JSON.stringify(seriesFields(existingTransaction)) !== JSON.stringify(seriesFields(updatedTransaction));
+                if (wasSeries && changed) {
+                    const scope = await showChoiceDialog(
+                        'שינוי בתנועה קבועה',
+                        `על אילו חודשים להחיל את השינוי ב"<b>${sanitizeHTML(existingTransaction.description)}</b>"?<br>חודשים שעברו לא ישתנו.`,
+                        [
+                            { label: 'בחודש הזה ובחודשים הבאים', value: 'future', style: 'modal-btn-save' },
+                            { label: 'רק בחודש הזה', value: 'this' },
+                            { label: 'ביטול', value: 'cancel' }
+                        ]
+                    );
+                    if (scope === 'cancel') return; // החלון נשאר פתוח
+                    if (scope === 'future') {
+                        delete updatedTransaction.seriesTemplate;
+                        if (!updatedTransaction.recurrence.isRecurring) {
+                            // הפסיק להיות קבוע: מסירים מהחודשים הבאים
+                            removeLaterSeriesInstances(listKey, existingTransaction.recurringId);
+                            delete updatedTransaction.recurringId;
+                        } else {
+                            getLaterSeriesInstances(listKey, existingTransaction.recurringId).forEach(({ item }) => {
+                                Object.assign(item, seriesFields(updatedTransaction));
+                                delete item.seriesTemplate;
+                            });
+                        }
+                    } else if (!updatedTransaction.seriesTemplate) {
+                        // חריגה בחודש הזה בלבד: זוכרים את הערכים הרגילים של הסדרה
+                        updatedTransaction.seriesTemplate = seriesFields(existingTransaction);
+                    }
+                } else if (!wasSeries && updatedTransaction.recurrence.isRecurring) {
+                    // הפך לקבוע עכשיו
+                    updatedTransaction.recurringId = existingTransaction.recurringId || newRecurringId();
+                    delete updatedTransaction.seriesTemplate;
+                    await offerAddToLaterMonths(listKey, updatedTransaction);
+                }
+            }
             
             list[indexToUpdate] = updatedTransaction; // עדכן את התנועה הנוכחית
 
@@ -1772,7 +1833,11 @@ async function saveTransaction() {
             backfillLoan(newTransaction, currentMonth);
 
         } else {
-             list.push(newTransaction);
+            list.push(newTransaction);
+            if (newTransaction.recurrence.isRecurring) {
+                newTransaction.recurringId = newRecurringId();
+                await offerAddToLaterMonths(currentType === 'income' ? 'income' : 'expenses', newTransaction);
+            }
         }
     }
 
@@ -1816,6 +1881,28 @@ async function deleteTransaction(event, type, id) { // 💡 --- הפך ל-async 
     }
     // 💡 --- סוף לוגיקת מחיקה גלובלית --- 💡
 
+
+    // --- תנועה קבועה עם עותקים בחודשים הבאים ---
+    const listKey = type === 'income' ? 'income' : 'expenses';
+    if (transaction.recurringId && getLaterSeriesInstances(listKey, transaction.recurringId).length > 0) {
+        const scope = await showChoiceDialog(
+            'מחיקת תנועה קבועה',
+            `למחוק את "<b>${sanitizeHTML(transaction.description)}</b>" רק מהחודש הזה, או גם מהחודשים הבאים?<br>חודשים שעברו לא ישתנו.`,
+            [
+                { label: 'מחק גם מהחודשים הבאים', value: 'future', style: 'modal-btn-danger' },
+                { label: 'מחק רק מהחודש הזה', value: 'this' },
+                { label: 'ביטול', value: 'cancel' }
+            ]
+        );
+        if (scope === 'cancel') return;
+        saveStateForUndo();
+        if (scope === 'future') removeLaterSeriesInstances(listKey, transaction.recurringId);
+        const indexToDelete = list.findIndex(t => t.id == id);
+        if (indexToDelete > -1) list.splice(indexToDelete, 1);
+        saveData();
+        render();
+        return;
+    }
 
     // --- לוגיקת מחיקה רגילה (עבור כל תנועה שאינה הלוואה) ---
     const message = `האם למחוק את <b>"${sanitizeHTML(transaction.description)}"</b> בסך <b>₪${transaction.amount.toLocaleString('he-IL')}</b>?`;
@@ -2319,7 +2406,8 @@ function addAllRecurringTransactions(type) {
     allRecurringTransactions.forEach(t => {
         // 💡 שינוי לוגי: הוסף רק אם זה לא קיים, ורק אם זה *באמת* תנועה קבועה (ולא תבנית כ. אשראי)
         if (!currentDescriptions.has(t.description) && (t.recurrence && t.recurrence.isRecurring)) {
-            const newTransaction = { ...t, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${addedCount}`, checked: true };
+            const newTransaction = instanceFromSeries(t);
+            newTransaction.id += `-${addedCount}`;
             list.push(newTransaction);
             addedCount++;
         }
@@ -2345,7 +2433,7 @@ function addRecurringTransaction(type, description) { // 💡 הפונקציה �
     if (transactionToAdd.recurrence && transactionToAdd.recurrence.isRecurring) {
         // --- התנהגות רגילה: זו תנועה קבועה, פשוט הוסף אותה ---
         saveStateForUndo();
-        const newTransaction = { ...transactionToAdd, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true };
+        const newTransaction = instanceFromSeries(transactionToAdd);
         const list = type === 'income' ? allData[currentMonth].income : allData[currentMonth].expenses;
         list.push(newTransaction);
         saveData();
@@ -3077,6 +3165,76 @@ function populateFilterDropdown(type) {
         option.addEventListener('click', () => {
             setFilter(type, option.dataset.filter);
         });
+    });
+}
+
+// ================================================
+// =========== תנועות קבועות מקושרות (סדרה) ===========
+// ================================================
+// לכל תנועה קבועה יש recurringId משותף לכל העותקים שלה בחודשים השונים.
+// עריכה / מחיקה שואלות: רק בחודש הזה, או גם בחודשים הבאים. חודשים שעברו לא משתנים.
+// seriesTemplate: הערכים הרגילים של הסדרה, כשבחודש מסוים יש חריגה ("רק בחודש הזה").
+
+function newRecurringId() {
+    return `rec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function seriesFields(t) {
+    return {
+        description: t.description,
+        amount: t.amount,
+        type: t.type,
+        recurrence: { isRecurring: !!(t.recurrence && t.recurrence.isRecurring), dayOfMonth: t.recurrence ? t.recurrence.dayOfMonth : null },
+        tags: [...(t.tags || [])]
+    };
+}
+
+// עותק חדש של תנועה קבועה לחודש אחר (לפי הערכים הרגילים של הסדרה, בלי החריגה)
+function instanceFromSeries(t) {
+    const base = t.seriesTemplate ? { ...t, ...t.seriesTemplate } : { ...t };
+    delete base.seriesTemplate;
+    return { ...base, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true };
+}
+
+function isSeriesRecurring(t) {
+    const base = t.seriesTemplate ? { ...t, ...t.seriesTemplate } : t;
+    return !!(base.recurrence && base.recurrence.isRecurring);
+}
+
+function getLaterSeriesInstances(listKey, recurringId) {
+    const result = [];
+    getExistingMonths().filter(key => key > currentMonth).forEach(monthKey => {
+        (allData[monthKey][listKey] || []).forEach(item => {
+            if (item.recurringId === recurringId) result.push({ monthKey, item });
+        });
+    });
+    return result;
+}
+
+function removeLaterSeriesInstances(listKey, recurringId) {
+    getExistingMonths().filter(key => key > currentMonth).forEach(monthKey => {
+        const monthData = allData[monthKey];
+        if (monthData[listKey]) monthData[listKey] = monthData[listKey].filter(item => item.recurringId !== recurringId);
+    });
+}
+
+// תנועה שהפכה לקבועה (או נוצרה כקבועה) כשכבר יש חודשים הבאים: להוסיף גם להם?
+async function offerAddToLaterMonths(listKey, item) {
+    const laterMonths = getExistingMonths().filter(key => key > currentMonth)
+        .filter(key => !(allData[key][listKey] || []).some(t => t.recurringId === item.recurringId));
+    if (laterMonths.length === 0) return;
+    const choice = await showChoiceDialog(
+        'תנועה קבועה',
+        `להוסיף את "<b>${sanitizeHTML(item.description)}</b>" גם ל${laterMonths.length === 1 ? 'חודש הבא שכבר קיים' : `-${laterMonths.length} החודשים הבאים שכבר קיימים`}?`,
+        [
+            { label: 'כן, גם לחודשים הבאים', value: 'yes', style: 'modal-btn-save' },
+            { label: 'רק לחודש הזה', value: 'no' }
+        ]
+    );
+    if (choice !== 'yes') return;
+    laterMonths.forEach(key => {
+        if (!allData[key][listKey]) allData[key][listKey] = [];
+        allData[key][listKey].push(instanceFromSeries(item));
     });
 }
 
