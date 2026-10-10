@@ -3178,11 +3178,18 @@ body {
     overflow-x: hidden;
 }
 
-body.scroll-locked {
-    position: fixed;
-    left: 0;
-    right: 0;
-    width: 100%;
+/* רקע העמוד עצמו בצבעי ערכת הנושא, ובלי "משיכה" שחושפת רקע בקצוות */
+html {
+    background: var(--bg-gradient-end);
+    overscroll-behavior: none;
+}
+
+body {
+    overscroll-behavior: none;
+}
+
+html.scroll-locked,
+html.scroll-locked body {
     overflow: hidden;
 }
 

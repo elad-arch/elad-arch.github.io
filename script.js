@@ -1163,12 +1163,10 @@ function loadTheme() {
 }
 
 function applyTheme(theme) {
-    const body = document.body;
-    if (theme === 'auto') {
-        body.setAttribute('data-theme', getSystemTheme());
-    } else {
-        body.setAttribute('data-theme', theme);
-    }
+    const resolved = theme === 'auto' ? getSystemTheme() : theme;
+    document.body.setAttribute('data-theme', resolved);
+    // גם על <html>, כדי שרקע העמוד כולו (מאחורי חלונות ובקצוות הגלילה) יהיה בצבע הנכון
+    document.documentElement.setAttribute('data-theme', resolved);
     updateThemeButton(theme);
 }
 
@@ -2679,21 +2677,10 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ---------- נעילת גלילת הרקע כשחלון פתוח ----------
-let scrollLockY = null;
-
+// overflow: hidden על html ו-body (בלי position: fixed, שגרם לרקע לבן מאחורי החלון)
 function updateScrollLock() {
     const anyOpen = !!document.querySelector('.modal.active, .sheet-overlay.active, .lock-screen.active');
-    const body = document.body;
-    if (anyOpen && scrollLockY === null) {
-        scrollLockY = window.scrollY;
-        body.style.top = `-${scrollLockY}px`;
-        body.classList.add('scroll-locked');
-    } else if (!anyOpen && scrollLockY !== null) {
-        body.classList.remove('scroll-locked');
-        body.style.top = '';
-        window.scrollTo(0, scrollLockY);
-        scrollLockY = null;
-    }
+    document.documentElement.classList.toggle('scroll-locked', anyOpen);
 }
 
 function setupScrollLock() {
