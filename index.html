@@ -24,15 +24,18 @@
         <header class="header app-header">
             <div class="app-topbar">
                 <div class="app-brand">
+                    <div class="app-brand-row">
                     <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
                     <h1>המצפן</h1>
+                    </div>
+                    <div class="today-date" id="todayDate"></div>
                 </div>
                 <div class="app-topbar-actions">
-                    <button type="button" class="sync-status" id="backupBtn" data-state="saved" title="גבה לענן">
+                    <button type="button" class="sync-status" id="backupBtn" data-state="saved" title="גיבוי לענן">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>
                         <span id="backupBtnText">מגובה</span>
                     </button>
-                    <button type="button" class="icon-btn" id="undoBtn" onclick="undoLastAction()" title="בטל פעולה אחרונה" aria-label="בטל פעולה אחרונה" disabled>
+                    <button type="button" class="icon-btn" id="undoBtn" onclick="undoLastAction()" title="ביטול הפעולה האחרונה" aria-label="ביטול הפעולה האחרונה" disabled>
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
                     </button>
                     <button type="button" class="icon-btn" id="mainMenuBtn" onclick="openSheet('mainMenuSheet')" title="תפריט" aria-label="תפריט" aria-haspopup="dialog">
@@ -57,6 +60,12 @@
             </div>
         </header>
 
+        <div class="month-lock-bar hidden" id="monthLockBar" role="status">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span id="monthLockText">חודש שעבר · לקריאה בלבד</span>
+            <button type="button" class="month-lock-btn" id="monthLockBtn">פתיחה לעריכה</button>
+        </div>
+
         <section class="hero-card" aria-label="תחזית החודש">
             <div class="hero-balance">
                 <div class="hero-label">
@@ -70,11 +79,11 @@
                 <div class="hero-edit hidden" id="balanceEditRow">
                     <button type="button" class="hero-sign" id="balanceSignBtn" aria-label="החלף בין פלוס למינוס" title="פלוס / מינוס">±</button>
                     <input type="number" inputmode="decimal" step="0.01" id="currentBalanceInput" class="hero-input" dir="ltr" oninput="updateSummary()" aria-label="עו״ש עכשיו" placeholder="0">
-                    <button type="button" class="hero-save" id="balanceSaveBtn" aria-label="שמור">
+                    <button type="button" class="hero-save" id="balanceSaveBtn" aria-label="שמירה">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                     </button>
                 </div>
-                <div class="hero-hint hidden" id="balanceEditHint">הקלד את היתרה מאפליקציית הבנק</div>
+                <div class="hero-hint hidden" id="balanceEditHint">היתרה מאפליקציית הבנק</div>
             </div>
             <div class="hero-tiles">
                 <div class="hero-tile">
@@ -106,7 +115,7 @@
                     </button>
                     <button type="button" class="primary-btn" onclick="openModal('expense')">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                        הוסף הוצאה
+                        הוספת הוצאה
                     </button>
                 </div>
             </div>
@@ -126,7 +135,7 @@
                     </button>
                     <button type="button" class="primary-btn" onclick="openModal('income')">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                        הוסף הכנסה
+                        הוספת הכנסה
                     </button>
                 </div>
             </div>
@@ -144,7 +153,7 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="6" y1="12" x2="18" y2="12"></line></svg>
                         הלוואות
                     </div>
-                    <button class="action-btn collapse-btn" onclick="toggleCard(this, 'loansSummary')" title="מזער/הרחב" aria-label="מזער/הרחב">
+                    <button class="action-btn collapse-btn" onclick="toggleCard(this, 'loansSummary')" title="כיווץ / הרחבה" aria-label="כיווץ / הרחבה">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
                     </button>
                 </div>
@@ -184,7 +193,7 @@
             <div class="sheet-handle" aria-hidden="true"></div>
             <div class="sheet-header">
                 <div class="sheet-title" id="mainMenuTitle">תפריט</div>
-                <button type="button" class="sheet-close" onclick="closeSheets()" aria-label="סגור">
+                <button type="button" class="sheet-close" onclick="closeSheets()" aria-label="סגירה">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
@@ -194,7 +203,7 @@
                     <div class="sheet-list">
                         <button type="button" class="sheet-row" id="loadFromCloudBtn">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></svg>
-                            <span class="sheet-row-label">טען מהענן</span>
+                            <span class="sheet-row-label">טעינה מהענן</span>
                             <span class="sheet-row-value" id="menuLastBackup"></span>
                         </button>
                     </div>
@@ -235,7 +244,7 @@
                         </button>
                         <button type="button" class="sheet-row" id="pinHeaderBtn" onclick="toggleHeaderPin()">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76Z"/></svg>
-                            <span class="sheet-row-label">הצמד כותרת</span>
+                            <span class="sheet-row-label">הצמדת כותרת</span>
                             <span class="sheet-row-value" id="pinValue">כבוי</span>
                         </button>
                     </div>
@@ -249,11 +258,11 @@
                         </button>
                         <button type="button" class="sheet-row danger" id="deleteAllBtn" onclick="closeSheets(); deleteAllData()">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            <span class="sheet-row-label">מחק את כל הנתונים</span>
+                            <span class="sheet-row-label">מחיקת כל הנתונים</span>
                         </button>
                         <button type="button" class="sheet-row" id="lockBtn">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                            <span class="sheet-row-label">התנתק</span>
+                            <span class="sheet-row-label">התנתקות</span>
                         </button>
                     </div>
                 </div>
@@ -270,7 +279,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
                 </button>
                 <div class="sheet-title" id="listMenuTitle">הוצאות</div>
-                <button type="button" class="sheet-close" onclick="closeSheets()" aria-label="סגור">
+                <button type="button" class="sheet-close" onclick="closeSheets()" aria-label="סגירה">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
@@ -281,7 +290,7 @@
                         <div class="sheet-list">
                             <button type="button" class="sheet-row" id="listMenuRecurring" onclick="openListMenuPanel('recurring')">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                                <span class="sheet-row-label">טען תנועות קבועות</span>
+                                <span class="sheet-row-label">טעינת תנועות קבועות</span>
                             </button>
                         </div>
                     </div>
@@ -345,7 +354,7 @@
                 <label class="form-label">תגים</label>
                 <div class="tags-input-wrapper">
                     <div id="tagsContainer" class="tags-container"></div>
-                    <input type="text" id="tagsInput" class="form-input" placeholder="הוסף תג ולחץ Enter...">
+                    <input type="text" id="tagsInput" class="form-input" placeholder="תג חדש + Enter">
                     <div id="tagsSuggestions" class="tags-suggestions"></div>
                 </div>
             </div>
@@ -373,22 +382,22 @@
             <div class="recurrence-group">
                 <label class="recurrence-label">
                     <input type="checkbox" id="recurrenceCheckbox">
-                    <span>הפוך תנועה זו לקבועה</span>
+                    <span>תנועה קבועה</span>
                 </label>
                 <div class="day-of-month-group">
-                    <label for="recurrenceDayInput">חזור כל</label>
+                    <label for="recurrenceDayInput">חוזרת כל</label>
                     <input type="number" inputmode="numeric" id="recurrenceDayInput" class="form-input" min="1" max="31" placeholder="יום">
                     <label>לחודש</label>
                 </div>
             </div>
 
             <div class="modal-actions">
-                <button class="modal-btn modal-btn-save" onclick="saveTransaction()">שמור</button>
+                <button class="modal-btn modal-btn-save" onclick="saveTransaction()">שמירה</button>
                 <button class="modal-btn modal-btn-cancel" onclick="requestCloseModal()">ביטול</button>
             </div>
             <div class="modal-extra-actions hidden" id="editExtraActions">
-                <button type="button" class="modal-link-btn" id="txApplyBtn">החל על העו״ש</button>
-                <button type="button" class="modal-link-btn danger" id="txDeleteBtn">מחק תנועה</button>
+                <button type="button" class="modal-link-btn" id="txApplyBtn">החלה על העו״ש</button>
+                <button type="button" class="modal-link-btn danger" id="txDeleteBtn">מחיקת תנועה</button>
             </div>
         </div>
     </div>
@@ -400,7 +409,7 @@
                 <canvas id="pieChart"></canvas>
             </div>
             <div class="modal-actions">
-                <button class="modal-btn modal-btn-cancel" onclick="closeChartModal()">סגור</button>
+                <button class="modal-btn modal-btn-cancel" onclick="closeChartModal()">סגירה</button>
             </div>
         </div>
     </div>
@@ -410,7 +419,7 @@
             <div class="modal-header" id="confirmModalTitle">אישור פעולה</div>
             <p id="confirmModalText"></p>
             <div class="modal-actions">
-                <button class="modal-btn" id="confirmModalConfirmBtn">אשר</button>
+                <button class="modal-btn" id="confirmModalConfirmBtn">אישור</button>
                 <button class="modal-btn modal-btn-cancel" onclick="closeConfirmModal()">ביטול</button>
             </div>
         </div>
@@ -420,7 +429,7 @@
     <div class="modal-content">
         <div class="modal-header" id="applyOptionsModalTitle">החלת תנועה על היתרה</div>
         <div class="apply-options-details">
-            <p>בחר כיצד להחיל את התנועה:</p>
+            <p>איך להחיל את התנועה?</p>
             <div class="apply-options-transaction" id="applyOptionsTransactionInfo">
                 </div>
         </div>
@@ -428,21 +437,21 @@
             <div class="apply-option" data-action="apply-delete">
                 <div class="apply-option-header">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="m22 2-11 11"/></svg>
-                    <div class="apply-option-title">החל ומחק</div>
+                    <div class="apply-option-title">החלה ומחיקה</div>
                 </div>
                 <div class="apply-option-desc">הסכום יועבר לעו"ש והתנועה תימחק מהרשימה.</div>
             </div>
             <div class="apply-option" data-action="apply-zero">
                 <div class="apply-option-header">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
-                    <div class="apply-option-title">החל ואפס</div>
+                    <div class="apply-option-title">החלה ואיפוס</div>
                 </div>
                 <div class="apply-option-desc">הסכום יועבר לעו"ש וסכום התנועה יתאפס ל-0.</div>
             </div>
             <div class="apply-option" data-action="apply-only">
                 <div class="apply-option-header">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                    <div class="apply-option-title">החל בלבד</div>
+                    <div class="apply-option-title">החלה בלבד</div>
                 </div>
                 <div class="apply-option-desc">הסכום יועבר לעו"ש והתנועה תישאר ללא שינוי.</div>
             </div>
@@ -455,10 +464,13 @@
         <div class="modal" id="newMonthModal">
                  <div class="modal-content">
                     <div class="modal-header" id="newMonthModalTitle">יצירת חודש חדש</div>
-                    <p id="newMonthModalText" style="text-align: center; margin-bottom: 24px; color: var(--text-secondary);">בחר כיצד ליצור את החודש הבא.</p>
+                    <p id="newMonthModalText" style="text-align: center; margin-bottom: 24px; color: var(--text-secondary);">איך ליצור את החודש החדש?</p>
                     <div class="modal-actions" style="flex-direction: column;">
-                    <button class="modal-btn modal-btn-save" id="copyMonthBtn">התחל עם תנועות קבועות</button>
-                    <button class="modal-btn modal-btn-secondary" id="cleanMonthBtn">התחל עם חודש ריק</button>
+                    <button class="modal-btn modal-btn-save" id="copyMonthBtn">
+                        <span style="font-weight: 700;">כמו החודש הקודם</span>
+                        <small style="font-weight: 400; display: block; opacity: 0.9;">אותו סדר: תנועות קבועות, הלוואות וכרטיסי אשראי (עם ‎0₪ לעדכון)</small>
+                    </button>
+                    <button class="modal-btn modal-btn-secondary" id="cleanMonthBtn">חודש ריק</button>
                     <button class="modal-btn modal-btn-cancel" id="cancelNewMonthBtn">ביטול</button>
             </div>
         </div>
@@ -466,15 +478,15 @@
          <div class="modal" id="editMonthModal">
                <div class="modal-content">
                     <div class="modal-header" id="editMonthModalTitle">עריכת נתוני החודש</div>
-                    <p id="editMonthModalText" style="text-align: center; margin-bottom: 24px; color: var(--text-secondary);">בחר את הפעולה הרצויה עבור חודש זה.</p>
+                    <p id="editMonthModalText" style="text-align: center; margin-bottom: 24px; color: var(--text-secondary);">מה לעשות עם החודש הזה?</p>
                     <div class="modal-actions" style="flex-direction: column; gap: 16px;">
                 <button class="modal-btn modal-btn-secondary" id="resetMonthBtn">
-                    <span style="font-weight: 700;">אפס נתוני חודש</span>
+                    <span style="font-weight: 700;">איפוס נתוני החודש</span>
                     <small style="font-weight: 400; display: block; opacity: 0.8;">פעולה זו תמחק את כל התנועות בחודש זה.</small>
                 </button>
                 <button class="modal-btn modal-btn-danger" id="deleteMonthPermanentlyBtn">
-                     <span style="font-weight: 700;">מחק חודש לצמיתות</span>
-                    <small style="font-weight: 400; display: block; opacity: 0.8;">שימו לב: לא ניתן לשחזר חודש שנמחק.</small>
+                     <span style="font-weight: 700;">מחיקת החודש לצמיתות</span>
+                    <small style="font-weight: 400; display: block; opacity: 0.8;">לא ניתן לשחזר חודש שנמחק.</small>
                 </button>
                 <button class="modal-btn modal-btn-cancel" id="cancelEditMonthBtn">ביטול</button>
             </div>
@@ -487,7 +499,7 @@
             <div id="tagsManagementList" class="tags-management-list">
                 </div>
             <div class="modal-actions">
-                <button class="modal-btn modal-btn-cancel" onclick="closeTagsManagementModal()">סגור</button>
+                <button class="modal-btn modal-btn-cancel" onclick="closeTagsManagementModal()">סגירה</button>
             </div>
         </div>
     </div>
@@ -497,7 +509,7 @@
             <div id="tagsOverflowModalList" class="tags-overflow-list">
                 </div>
             <div class="modal-actions">
-                <button class="modal-btn modal-btn-cancel" onclick="closeOverflowTagsModal()">סגור</button>
+                <button class="modal-btn modal-btn-cancel" onclick="closeOverflowTagsModal()">סגירה</button>
             </div>
         </div>
     </div>
@@ -512,11 +524,11 @@
                 <input type="number" inputmode="decimal" class="form-input" id="overdraftLimitInput" placeholder="5000" step="100" min="0" style="font-weight: 700; font-size: 1.2em; text-align: center; direction: ltr;">
             </div>
             <p style="font-size: 13px; color: var(--text-secondary); text-align: center; margin-top: 8px;">
-                התחזית תראה כמה נשאר לך עד המסגרת, ותתריע אם צפויה חריגה. השאר 0 אם אין לך מסגרת.
+                התחזית תראה כמה נשאר לך עד המסגרת, ותתריע אם צפויה חריגה. 0 = אין מסגרת.
             </p>
         </div>
         <div class="modal-actions">
-            <button class="modal-btn modal-btn-save" onclick="saveOverdraftLimit()">שמור</button>
+            <button class="modal-btn modal-btn-save" onclick="saveOverdraftLimit()">שמירה</button>
             <button class="modal-btn modal-btn-cancel" onclick="closeShortfallModal()">ביטול</button>
         </div>
     </div>
@@ -524,19 +536,19 @@
     <div class="lock-screen active" id="lockScreen">
         <div class="modal-content lock-content">
             <div class="modal-header">המצפן הפיננסי</div>
-            <p class="lock-text">הנתונים שמורים במכשיר, מוצפנים בסיסמה שלך.<br>הזן את הסיסמה כדי לפתוח אותם.</p>
+            <p class="lock-text">הנתונים שמורים במכשיר, מוצפנים בסיסמה שלך.<br>הסיסמה נדרשת כדי לפתוח אותם.</p>
             <form id="lockForm" autocomplete="on">
                 <input type="text" name="username" value="mazpen" autocomplete="username" hidden>
                 <input type="password" id="lockPasswordInput" class="form-input" placeholder="סיסמת סנכרון" autocomplete="current-password">
                 <label class="lock-remember">
                     <input type="checkbox" id="lockRememberCheckbox">
-                    זכור את הסיסמה במכשיר הזה
+                    לזכור את הסיסמה במכשיר הזה
                 </label>
                 <div class="lock-error" id="lockError" aria-live="polite">טוען…</div>
                 <button type="submit" class="modal-btn modal-btn-save lock-submit" id="lockSubmitBtn" disabled>כניסה</button>
             </form>
             <p class="lock-note">במכשיר חדש הנתונים ייטענו מהגיבוי בענן. השתמש באותה סיסמה שבה גיבית. בלי הסיסמה אי אפשר לשחזר את הנתונים.</p>
-            <button type="button" class="lock-reset" id="lockResetBtn" hidden>שכחת את הסיסמה? מחק את הנתונים מהמכשיר הזה</button>
+            <button type="button" class="lock-reset" id="lockResetBtn" hidden>הסיסמה נשכחה? מחיקת הנתונים מהמכשיר הזה</button>
         </div>
     </div>
 

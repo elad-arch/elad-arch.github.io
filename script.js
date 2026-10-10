@@ -29,6 +29,11 @@ function formatMoney(value) {
     return `${value < 0 ? '-' : ''}₪${abs.toLocaleString('he-IL', { minimumFractionDigits: digits, maximumFractionDigits: 2 })}`;
 }
 
+function renderTodayDate() {
+    const el = document.getElementById('todayDate');
+    if (el) el.textContent = new Date().toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
 function getMonthName(monthKey) {
     const [year, month] = monthKey.split('-');
     return new Date(year, month - 1).toLocaleString('he-IL', { month: 'long' });
@@ -270,11 +275,11 @@ function updateBackupStatus() {
     const unbackedDays = getUnbackedDays();
     const state = sync.busy ? 'busy' : (isBackedUp() ? 'saved' : (unbackedDays >= BACKUP_REMINDER_DAYS ? 'overdue' : 'dirty'));
     btn.dataset.state = state;
-    document.getElementById('backupBtnText').textContent = { saved: 'מגובה', dirty: 'גבה לענן', overdue: 'גבה לענן!', busy: 'רגע…' }[state];
+    document.getElementById('backupBtnText').textContent = { saved: 'מגובה', dirty: 'גיבוי לענן', overdue: 'גיבוי לענן!', busy: 'רגע…' }[state];
     const last = `גיבוי אחרון: ${formatDateTime(sync.meta.lastBackupAt)}`;
     const titles = {
-        dirty: `יש שינויים שעוד לא גובו לענן. לחץ לגיבוי. (${last})`,
-        overdue: `יש שינויים שלא גובו כבר ${unbackedDays} ימים, והם קיימים רק במכשיר הזה. לחץ לגיבוי. (${last})`
+        dirty: `יש שינויים שעוד לא גובו לענן. לחיצה לגיבוי. (${last})`,
+        overdue: `יש שינויים שלא גובו כבר ${unbackedDays} ימים, והם קיימים רק במכשיר הזה. לחיצה לגיבוי. (${last})`
     };
     btn.title = titles[state] || last;
     const menuLastBackup = document.getElementById('menuLastBackup');
@@ -314,8 +319,8 @@ async function backupToCloud() {
                 'בענן יש גרסה אחרת',
                 'מאז הטעינה או הגיבוי האחרון במכשיר הזה, נשמרה בענן גרסה אחרת (כנראה ממכשיר אחר).<br>מה לעשות?',
                 [
-                    { label: 'גבה ודרוס את הענן', value: 'overwrite', style: 'modal-btn-save' },
-                    { label: 'טען את הגרסה מהענן', value: 'load' },
+                    { label: 'גיבוי ודריסת הענן', value: 'overwrite', style: 'modal-btn-save' },
+                    { label: 'טעינת הגרסה מהענן', value: 'load' },
                     { label: 'ביטול', value: 'cancel' }
                 ]
             );
@@ -341,7 +346,7 @@ async function backupToCloud() {
         saveSyncMeta();
     } catch (error) {
         console.error('Error backing up to cloud:', error);
-        openConfirmModal('שגיאה', 'הגיבוי לענן נכשל. בדוק את החיבור לאינטרנט ונסה שוב.', closeConfirmModal);
+        openConfirmModal('שגיאה', 'הגיבוי לענן נכשל. כדאי לבדוק את החיבור לאינטרנט ולנסות שוב.', closeConfirmModal);
     } finally {
         sync.busy = false;
         updateBackupStatus();
@@ -370,7 +375,7 @@ async function loadFromCloud() {
             return;
         }
         if (result.status === 'error') {
-            openConfirmModal('שגיאה', 'הטעינה מהענן נכשלה. בדוק את החיבור לאינטרנט ונסה שוב.', closeConfirmModal);
+            openConfirmModal('שגיאה', 'הטעינה מהענן נכשלה. כדאי לבדוק את החיבור לאינטרנט ולנסות שוב.', closeConfirmModal);
             return;
         }
         if (!result.data) {
@@ -525,7 +530,7 @@ async function unlock(password, rememberOnDevice) {
             'אין נתונים במכשיר ואין גיבוי בענן.<br>הסיסמה שהזנת תצפין את הנתונים, והגיבוי הראשון ינעל את המאגר בענן. <b>בלי הסיסמה אי אפשר לשחזר את הנתונים.</b>',
             [
                 { label: 'המשך עם הסיסמה הזו', value: 'ok', style: 'modal-btn-save' },
-                { label: 'חזור', value: 'back' }
+                { label: 'חזרה', value: 'back' }
             ]
         );
         if (choice !== 'ok') {
@@ -570,9 +575,9 @@ async function lockApp() {
 async function resetLocalData() {
     const choice = await showChoiceDialog(
         'מחיקת הנתונים מהמכשיר',
-        'הנתונים יימחקו <b>מהמכשיר הזה בלבד</b>. אחרי זה תוכל להיכנס ולטעון את הגיבוי מהענן.<br>שינויים שלא גובו לענן יאבדו לתמיד.',
+        'הנתונים יימחקו <b>מהמכשיר הזה בלבד</b>. אחר כך אפשר להיכנס ולטעון את הגיבוי מהענן.<br>שינויים שלא גובו לענן יאבדו לתמיד.',
         [
-            { label: 'מחק מהמכשיר', value: 'delete', style: 'modal-btn-danger' },
+            { label: 'מחיקה מהמכשיר', value: 'delete', style: 'modal-btn-danger' },
             { label: 'ביטול', value: 'cancel' }
         ]
     );
@@ -605,6 +610,7 @@ function initStorage() {
             flushLocalSave();
         } else {
             updateBackupStatus(); // הזמן עבר - אולי צריך להציג תזכורת גיבוי
+            renderTodayDate();
         }
     });
     window.addEventListener('beforeunload', (e) => {
@@ -701,6 +707,40 @@ function getExistingMonths() {
 // מהעו"ש הצפוי בסוף החודש שלפניו, ומתעדכן מיד כשמשנים חודש קודם.
 // החודש הנוכחי וחודשים שעברו: העו"ש מוזן ידנית (העו"ש האמיתי בבנק).
 
+// ---------- חודשים שעברו נעולים לעריכה ----------
+// אפשר לפתוח חודש שעבר לעריכה זמנית; הוא ננעל שוב כשעוברים לחודש אחר.
+let unlockedMonth = null;
+
+function isLockedMonth(monthKey) {
+    return monthKey < getCurrentMonthKey() && unlockedMonth !== monthKey;
+}
+
+// מחזיר false (ומבליט את פס הנעילה) אם החודש הנוכחי נעול
+function ensureMonthEditable() {
+    if (!isLockedMonth(currentMonth)) return true;
+    const bar = document.getElementById('monthLockBar');
+    bar.classList.remove('flash');
+    void bar.offsetWidth; // מאפשר להפעיל את האנימציה שוב
+    bar.classList.add('flash');
+    return false;
+}
+
+function setMonthUnlocked(unlocked) {
+    unlockedMonth = unlocked ? currentMonth : null;
+    render();
+}
+
+function updateMonthLockBar() {
+    const isPast = currentMonth < getCurrentMonthKey();
+    const locked = isLockedMonth(currentMonth);
+    const bar = document.getElementById('monthLockBar');
+    bar.classList.toggle('hidden', !isPast);
+    bar.classList.toggle('unlocked', isPast && !locked);
+    document.getElementById('monthLockText').textContent = locked ? 'חודש שעבר · לקריאה בלבד' : 'חודש שעבר · פתוח לעריכה זמנית';
+    document.getElementById('monthLockBtn').textContent = locked ? 'פתיחה לעריכה' : 'נעילה';
+    document.body.classList.toggle('month-locked', locked);
+}
+
 function isForecastMonth(monthKey) {
     return monthKey > getCurrentMonthKey();
 }
@@ -754,40 +794,29 @@ function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
     const previousMonthFinalBalance = allData[prevMonthKey] ? getMonthFinalBalance(prevMonthKey) : 0;
     allData[currentMonth] = { income: [], expenses: [], balance: previousMonthFinalBalance };
     if (shouldCopy && allData[prevMonthKey]) {
-        // מעתיקים רק את התנועות הקבועות של החודש הקודם, כך שתנועה קבועה שנמחקה לא חוזרת
+        // "כמו החודש הקודם": אותו סדר בדיוק. תנועות קבועות לפי הערכים הרגילים של הסדרה,
+        // הלוואות עם התשלום הבא, כרטיסי אשראי עם ‎0₪ (כדי לעדכן). תנועות חד-פעמיות לא עוברות.
         const prevData = allData[prevMonthKey];
-        // (לפי הערכים הרגילים של הסדרה - חריגה של חודש אחד לא עוברת הלאה)
         (prevData.income || []).filter(t => isSeriesRecurring(t)).forEach(t => {
             allData[currentMonth].income.push(instanceFromSeries(t));
         });
-        (prevData.expenses || []).filter(t => t.type !== 'loan' && isSeriesRecurring(t)).forEach(t => {
-            allData[currentMonth].expenses.push(instanceFromSeries(t));
-        });
-
-        if (allData[prevMonthKey] && allData[prevMonthKey].expenses) {
-            const loansToCopy = allData[prevMonthKey].expenses.filter(t => t.type === 'loan' && !t.completed);
-            
-            loansToCopy.forEach(loan => {
-                const newLoan = { ...loan };
-                newLoan.id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                
-                // ודא של-ID המקורי יש ID גלובלי (למקרה שזו הלוואה ישנה מאוד)
-                if (!newLoan.globalLoanId) {
-                    newLoan.globalLoanId = `loan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                }
-                
+        (prevData.expenses || []).forEach(t => {
+            if (t.type === 'loan') {
+                if (t.completed) return;
+                const newLoan = { ...t, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, isExpanded: false };
+                if (!newLoan.globalLoanId) newLoan.globalLoanId = `loan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                 newLoan.loanCurrent++;
-
-                if (newLoan.loanCurrent >= newLoan.loanTotal) {
-                    newLoan.completed = true;
-                    newLoan.checked = true; 
-                } else {
-                    newLoan.completed = false;
-                    newLoan.checked = true;
-                }
+                newLoan.completed = newLoan.loanCurrent >= newLoan.loanTotal;
+                newLoan.checked = true;
                 allData[currentMonth].expenses.push(newLoan);
-            });
-        }
+            } else if (t.type === 'variable') {
+                const card = instanceFromSeries(t);
+                card.amount = 0;
+                allData[currentMonth].expenses.push(card);
+            } else if (isSeriesRecurring(t)) {
+                allData[currentMonth].expenses.push(instanceFromSeries(t));
+            }
+        });
     }
 
     document.getElementById('currentBalanceInput').value = allData[currentMonth].balance || 0;
@@ -929,30 +958,55 @@ function jumpToCurrentMonth() {
     }
 }
 
+let expandedJumperYears = null; // השנים הפתוחות בבחירת החודש
+
 function populateMonthJumper() {
     const jumperList = document.getElementById('monthJumperList');
     if (!jumperList) return;
-    const months = getExistingMonths().sort((a, b) => b.localeCompare(a));
+    const months = getExistingMonths();
+    const currentYear = currentMonth.split('-')[0];
+    if (!expandedJumperYears) expandedJumperYears = new Set([currentYear]);
+    expandedJumperYears.add(currentYear);
+
     jumperList.innerHTML = '';
     if (currentMonth !== getCurrentMonthKey()) {
-        const back = document.createElement('div');
+        const back = document.createElement('button');
+        back.type = 'button';
         back.classList.add('filter-option', 'jump-today');
         back.textContent = 'חזרה לחודש הנוכחי';
         back.onclick = () => { toggleMonthJumper(); jumpToCurrentMonth(); };
         jumperList.appendChild(back);
     }
-    months.forEach(monthKey => {
-        const [year, month] = monthKey.split('-');
-        const date = new Date(year, month - 1);
-        const monthName = date.toLocaleString('he-IL', { month: 'long', year: 'numeric' });
-        const option = document.createElement('div');
-        option.classList.add('filter-option');
-        if (monthKey === currentMonth) {
-            option.classList.add('selected');
-        }
-        option.textContent = monthName;
-        option.onclick = () => jumpToMonth(monthKey);
-        jumperList.appendChild(option);
+
+    const years = [...new Set(months.map(m => m.split('-')[0]))].sort((a, b) => b.localeCompare(a));
+    years.forEach(year => {
+        const isOpen = expandedJumperYears.has(year);
+        const header = document.createElement('button');
+        header.type = 'button';
+        header.className = 'jumper-year';
+        header.setAttribute('aria-expanded', String(isOpen));
+        header.innerHTML = `<span>${year}</span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+        header.onclick = (e) => {
+            e.stopPropagation();
+            if (isOpen) expandedJumperYears.delete(year); else expandedJumperYears.add(year);
+            populateMonthJumper();
+        };
+        jumperList.appendChild(header);
+        if (!isOpen) return;
+
+        const grid = document.createElement('div');
+        grid.className = 'jumper-grid';
+        months.filter(m => m.startsWith(year + '-')).forEach(monthKey => {
+            const option = document.createElement('button');
+            option.type = 'button';
+            option.className = 'jumper-month';
+            if (monthKey === currentMonth) option.classList.add('selected');
+            if (monthKey === getCurrentMonthKey()) option.classList.add('today');
+            option.textContent = getMonthName(monthKey);
+            option.onclick = () => jumpToMonth(monthKey);
+            grid.appendChild(option);
+        });
+        jumperList.appendChild(grid);
     });
 }
 
@@ -1049,6 +1103,7 @@ function applyLoadedData(data) {
  * מציג את החודש שב-currentMonth (יוצר אותו אם הוא לא קיים)
  */
 function showCurrentMonth() {
+    if (unlockedMonth !== currentMonth) unlockedMonth = null; // מעבר חודש נועל שוב
     if (!allData[currentMonth]) {
         allData[currentMonth] = { income: [], expenses: [], balance: 0 };
     }
@@ -1165,7 +1220,7 @@ function updateSummary() {
         marginEl.textContent = formatMoney(margin);
         marginEl.className = 'hero-tile-value ' + (margin < 0 ? 'negative' : (finalBalance < 0 ? 'warning' : ''));
     } else {
-        marginEl.innerHTML = '<button type="button" class="link-btn" onclick="openOverdraftModal()">הגדר מסגרת</button>';
+        marginEl.innerHTML = '<button type="button" class="link-btn" onclick="openOverdraftModal()">הגדרת מסגרת</button>';
         marginEl.className = 'hero-tile-value';
     }
     document.getElementById('menuOverdraftValue').textContent = limit > 0 ? formatMoney(limit) : 'לא הוגדרה';
@@ -1509,7 +1564,7 @@ function closeChartModal() {
 
 function deleteAllData() {
     if (Object.keys(allData).length === 1 && allData.tags) return;
-    const message = `אתה עומד למחוק את <b>כל הנתונים מכל החודשים</b> לצמיתות. האם להמשיך?`;
+    const message = `למחוק את <b>כל הנתונים מכל החודשים</b> לצמיתות?`;
     openConfirmModal('אישור מחיקת כל הנתונים', message, () => {
         saveStateForUndo();
         allData = {};
@@ -1524,6 +1579,7 @@ function deleteAllData() {
 }
 
 function openModal(type, id = null) {
+    if (!ensureMonthEditable()) return;
     currentType = type;
     editingId = id;
     const modal = document.getElementById('transactionModal');
@@ -1632,9 +1688,9 @@ async function requestCloseModal() {
         'יש שינויים שלא נשמרו',
         'מה לעשות עם השינויים שהזנת?',
         [
-            { label: 'שמור', value: 'save', style: 'modal-btn-save' },
-            { label: 'צא בלי לשמור', value: 'discard' },
-            { label: 'המשך לערוך', value: 'keep' }
+            { label: 'שמירה', value: 'save', style: 'modal-btn-save' },
+            { label: 'יציאה בלי לשמור', value: 'discard' },
+            { label: 'המשך עריכה', value: 'keep' }
         ]
     );
     if (choice === 'save') saveTransaction();
@@ -1662,7 +1718,8 @@ async function saveTransaction() {
         dayOfMonth = null;
     }
     
-    if (!description || !amount || amount <= 0) {
+    const allowsZero = selectedTransactionType === 'variable'; // כרטיס אשראי שעוד לא עודכן
+    if (!description || isNaN(amount) || amount < 0 || (amount === 0 && !allowsZero)) {
         openConfirmModal('שגיאה', 'נא למלא תיאור וסכום חיובי.', closeConfirmModal);
         return;
     }
@@ -1889,8 +1946,8 @@ async function deleteTransaction(event, type, id) { // 💡 --- הפך ל-async 
             'מחיקת תנועה קבועה',
             `למחוק את "<b>${sanitizeHTML(transaction.description)}</b>" רק מהחודש הזה, או גם מהחודשים הבאים?<br>חודשים שעברו לא ישתנו.`,
             [
-                { label: 'מחק גם מהחודשים הבאים', value: 'future', style: 'modal-btn-danger' },
-                { label: 'מחק רק מהחודש הזה', value: 'this' },
+                { label: 'מחיקה גם מהחודשים הבאים', value: 'future', style: 'modal-btn-danger' },
+                { label: 'מחיקה רק מהחודש הזה', value: 'this' },
                 { label: 'ביטול', value: 'cancel' }
             ]
         );
@@ -2000,6 +2057,7 @@ function openApplyOptionsModal(type, id) {
 }
 
 function handleApplyAction(type, id, action) {
+    if (!ensureMonthEditable()) { closeApplyOptionsModal(); return; }
     if (isForecastMonth(currentMonth)) {
         closeApplyOptionsModal();
         openConfirmModal('מידע', 'בחודש עתידי העו"ש מחושב אוטומטית מהחודש הקודם, ולכן אי אפשר להחיל עליו תנועות.', closeConfirmModal);
@@ -2071,7 +2129,7 @@ function renderListCount(type) {
     const el = document.getElementById(type === 'income' ? 'incomeCount' : 'expenseCount');
     const filter = type === 'income' ? filterIncome : filterExpense;
     if (filter !== 'all') {
-        el.innerHTML = `<button type="button" class="filter-chip" onclick="setFilter('${type}', 'all')" aria-label="נקה סינון">סינון: ${sanitizeHTML(getFilterLabel(filter))} <span aria-hidden="true">✕</span></button>`;
+        el.innerHTML = `<button type="button" class="filter-chip" onclick="setFilter('${type}', 'all')" aria-label="ניקוי הסינון">סינון: ${sanitizeHTML(getFilterLabel(filter))} <span aria-hidden="true">✕</span></button>`;
         return;
     }
     const list = allData[currentMonth][type === 'income' ? 'income' : 'expenses'] || [];
@@ -2087,6 +2145,7 @@ function render() {
     syncBalanceFromInput();
     recomputeForecastBalances();
     updateBalanceMode();
+    updateMonthLockBar();
 
     // 1. קבל נתונים מפולטרים וממוינים
     const filteredIncome = getFilteredAndSortedData('income');
@@ -2236,7 +2295,7 @@ function renderTransactionList(type, filteredData, allDataForIndices) {
                 <div class="loan-progress ${t.isExpanded ? 'visible' : ''}">
                     <div class="loan-progress-container"><div class="progress-bar-container"><div class="progress-bar-fill" style="width: ${percentage}%"></div></div>
                         <div class="progress-text">${t.loanCurrent}/${t.loanTotal} (${percentage.toFixed(0)}%) · ₪${amountPaid.toLocaleString('he-IL')} שולמו</div>
-                        <div class="loan-progress-actions"><button type="button" class="loan-edit-btn" data-action="edit">ערוך הלוואה</button></div>
+                        <div class="loan-progress-actions"><button type="button" class="loan-edit-btn" data-action="edit">עריכת ההלוואה</button></div>
                     </div>
                 </div>`;
         }
@@ -2263,8 +2322,8 @@ function renderTransactionList(type, filteredData, allDataForIndices) {
                     </div>
                 </div>
                 
-                <div class="transaction-amount" data-action="edit-amount" title="לחץ לשינוי מהיר של הסכום">
-                    <span class="amount-text" dir="ltr">${formatMoney(t.amount)}</span>
+                <div class="transaction-amount" data-action="edit-amount" title="שינוי מהיר של הסכום">
+                    <span class="amount-text ${t.type === 'variable' && !t.amount ? 'needs-amount' : ''}" dir="ltr">${t.type === 'variable' && !t.amount ? 'להזנת סכום' : formatMoney(t.amount)}</span>
                     <input type="number" inputmode="decimal" class="inline-edit-input" step="0.01" onkeydown="handleEditKeys(event)" onblur="saveAmount(event, '${type}')">
                 </div>
                 
@@ -2329,7 +2388,7 @@ function populateRecurringDropdown(type) {
         dropdown.innerHTML = '<div class="recurring-dropdown-header">לא נמצאו תנועות או תבניות</div>';
         return;
     }
-    dropdown.innerHTML = '<div class="recurring-dropdown-header">בחר תנועה להוספה</div>';
+    dropdown.innerHTML = '<div class="recurring-dropdown-header">איזו תנועה להוסיף?</div>';
     
     const unaddedTransactions = [];
     recurringList.forEach(t => {
@@ -2381,7 +2440,7 @@ function populateRecurringDropdown(type) {
         
         addAllButton.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-            הוסף הכל (${trulyRecurringToAdd})
+            הוספת הכל (${trulyRecurringToAdd})
         `;
         
         if (trulyRecurringToAdd === 0) {
@@ -2491,6 +2550,9 @@ function handleListClick(event) {
         event.stopPropagation(); // מנע "זליגה" של הקליק
         const action = actionElement.dataset.action;
 
+        // בחודש נעול: רק צפייה (פתיחת פרטי הלוואה / תגים)
+        if (!['toggle-loan', 'show-overflow-tags'].includes(action) && !ensureMonthEditable()) return;
+
         switch (action) {
             case 'toggle-check':
                 toggleCheck(event, type, id);
@@ -2552,7 +2614,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('prevMonthBtn').addEventListener('click', () => navigateMonths(-1));
     document.getElementById('nextMonthBtn').addEventListener('click', () => navigateMonths(1));
-    document.getElementById('deleteMonthBtn').addEventListener('click', () => { closeSheets(); openEditMonthModal(); });
+    document.getElementById('deleteMonthBtn').addEventListener('click', () => { closeSheets(); if (ensureMonthEditable()) openEditMonthModal(); });
+    document.getElementById('monthLockBtn').addEventListener('click', () => setMonthUnlocked(isLockedMonth(currentMonth)));
     document.querySelectorAll('.sheet-overlay').forEach(overlay => {
         overlay.addEventListener('click', (e) => { if (e.target === overlay) closeSheets(); });
     });
@@ -2609,9 +2672,37 @@ document.addEventListener('DOMContentLoaded', () => {
             e.target.classList.remove('active');
         }
     });
+    setupScrollLock();
+    renderTodayDate();
     initStorage();
     document.body.classList.remove('preload');
 });
+
+// ---------- נעילת גלילת הרקע כשחלון פתוח ----------
+let scrollLockY = null;
+
+function updateScrollLock() {
+    const anyOpen = !!document.querySelector('.modal.active, .sheet-overlay.active, .lock-screen.active');
+    const body = document.body;
+    if (anyOpen && scrollLockY === null) {
+        scrollLockY = window.scrollY;
+        body.style.top = `-${scrollLockY}px`;
+        body.classList.add('scroll-locked');
+    } else if (!anyOpen && scrollLockY !== null) {
+        body.classList.remove('scroll-locked');
+        body.style.top = '';
+        window.scrollTo(0, scrollLockY);
+        scrollLockY = null;
+    }
+}
+
+function setupScrollLock() {
+    const observer = new MutationObserver(updateScrollLock);
+    document.querySelectorAll('.modal, .sheet-overlay, .lock-screen').forEach(el => {
+        observer.observe(el, { attributes: true, attributeFilter: ['class'] });
+    });
+    updateScrollLock();
+}
 
 // ================================================
 // =========== תפריטים נפתחים מלמטה (sheets) ===========
@@ -2668,6 +2759,7 @@ function showListMenuMain() {
 }
 
 function openListMenuPanel(panel) {
+    if (panel === 'recurring' && !ensureMonthEditable()) { closeSheets(); return; }
     document.querySelectorAll('.sheet-panel').forEach(p => p.classList.remove('active'));
     document.getElementById('listMenuMain').classList.add('hidden');
     document.getElementById('listMenuBackBtn').classList.remove('hidden');
@@ -2691,7 +2783,7 @@ function openConfirmModal(title, text, onConfirm, onCancel = closeConfirmModal) 
     newCancelBtn.addEventListener('click', onCancel);
     const isInfo = title === 'שגיאה' || title === 'מידע' || title === 'הצלחה' || title === 'סטטיסטיקת מערכת';
     newConfirmBtn.style.display = isInfo ? 'none' : 'flex';
-    newCancelBtn.textContent = isInfo ? 'סגור' : 'ביטול';
+    newCancelBtn.textContent = isInfo ? 'סגירה' : 'ביטול';
     document.getElementById('confirmModal').classList.add('active');
 }
 
@@ -2741,6 +2833,7 @@ let balanceBeforeEdit = null;
 
 function startBalanceEdit() {
     if (isForecastMonth(currentMonth)) return;
+    if (!ensureMonthEditable()) return;
     const input = document.getElementById('currentBalanceInput');
     balanceBeforeEdit = input.value;
     document.getElementById('balanceDisplayBtn').classList.add('hidden');
@@ -2957,7 +3050,7 @@ function openTagsManagementModal() {
     const allTags = getAllTags();
 
     if(allTags.length === 0) {
-        listContainer.innerHTML = `<div class="empty-state">אין תגים להצגה. התחל להוסיף תגים לתנועות שלך!</div>`;
+        listContainer.innerHTML = `<div class="empty-state">אין עדיין תגים. אפשר להוסיף תגים בחלון העריכה של כל תנועה.</div>`;
     } else {
         allTags.forEach(tag => {
             const tagItem = document.createElement('div');
@@ -2967,7 +3060,7 @@ function openTagsManagementModal() {
             // במקום span רגיל, שמנו input מסוג color
             // הוספנו לו אירוע onchange שקורא לפונקציה החדשה
             tagItem.innerHTML = `
-                <div class="tag-color-wrapper" title="לחץ לשינוי צבע">
+                <div class="tag-color-wrapper" title="שינוי צבע">
                     <input type="color" 
                            class="tag-color-picker" 
                            value="${tag.color}" 
@@ -2975,8 +3068,8 @@ function openTagsManagementModal() {
                 </div>
                 <span class="tag-name">${sanitizeHTML(tag.name)}</span>
                 <div class="tag-actions">
-                    <button class="action-btn edit" onclick="editTag('${tag.id}')" title="שנה שם"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
-                    <button class="action-btn delete" onclick="deleteTag('${tag.id}')" title="מחק תג"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+                    <button class="action-btn edit" onclick="editTag('${tag.id}')" title="שינוי שם"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+                    <button class="action-btn delete" onclick="deleteTag('${tag.id}')" title="מחיקת תג"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
                 </div>
             `;
             // --- השינוי מסתיים כאן ---
@@ -2996,7 +3089,7 @@ function editTag(tagId) {
     const tag = getTagById(tagId);
     if (!tag) return;
 
-    const newName = prompt(`שנה את שם התג "${tag.name}":`, tag.name);
+    const newName = prompt(`שם חדש לתג "${tag.name}":`, tag.name);
     if (newName && newName.trim() !== tag.name) {
         saveStateForUndo();
         allData.tags[tagId].name = newName.trim();
@@ -3121,7 +3214,7 @@ function populateFilterDropdown(type) {
 
     // 2. הגדרת אפשרויות בסיס
     let options = [
-        { filter: 'all', icon: icons.all, text: 'הצג הכל' },
+        { filter: 'all', icon: icons.all, text: 'הכל' },
         { filter: 'active', icon: icons.active, text: 'תנועות פעילות' },
         { filter: 'inactive', icon: icons.inactive, text: 'תנועות לא פעילות' },
         { filter: 'regular', icon: icons.regular, text: 'קבועות' }
