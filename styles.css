@@ -3171,3 +3171,188 @@ body.header-pinned .app-header {
 .list-card .transaction-icons:empty {
     display: none;
 }
+
+/* --- בלי גלילה לצדדים, ונעילת הרקע כשחלון פתוח --- */
+html,
+body {
+    overflow-x: hidden;
+}
+
+body.scroll-locked {
+    position: fixed;
+    left: 0;
+    right: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+.modal,
+.sheet-overlay,
+.lock-screen {
+    overscroll-behavior: contain;
+}
+
+.modal-content,
+.sheet {
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+}
+
+/* --- תאריך מתחת ללוגו --- */
+.app-brand {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+}
+
+.app-brand-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.today-date {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+/* --- חודש שעבר: נעול --- */
+.month-lock-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 8px 8px 8px 12px;
+    border-radius: 12px;
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.month-lock-bar span {
+    flex: 1;
+}
+
+.month-lock-bar.unlocked {
+    background: var(--status-warning-bg);
+    color: var(--status-warning-text);
+}
+
+.month-lock-btn {
+    min-height: 36px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 10px;
+    background: var(--card-bg);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.month-lock-bar.flash {
+    animation: lock-flash 0.6s ease;
+}
+
+@keyframes lock-flash {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+}
+
+.month-locked .list-toolbar .primary-btn,
+.month-locked .transaction-check {
+    opacity: 0.45;
+}
+
+.month-locked .hero-amount .hero-edit-icon {
+    display: none;
+}
+
+/* --- בחירת חודש לפי שנים --- */
+#monthJumperList {
+    min-width: 260px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+#monthJumperList .jump-today {
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    text-align: right;
+}
+
+.jumper-year {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 40px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.jumper-year svg {
+    transition: transform 0.2s;
+}
+
+.jumper-year[aria-expanded="false"] svg {
+    transform: rotate(90deg);
+}
+
+.jumper-year:hover {
+    background: var(--item-hover);
+}
+
+.jumper-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 4px 4px 10px;
+}
+
+.jumper-month {
+    min-height: 40px;
+    padding: 0 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--card-bg);
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.jumper-month.today {
+    border-color: var(--accent);
+    font-weight: 600;
+}
+
+.jumper-month.selected {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #ffffff;
+    font-weight: 600;
+}
+
+/* --- כרטיס אשראי שעוד לא הוזן לו סכום --- */
+.list-card .amount-text.needs-amount {
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-size: 14px;
+    text-decoration: underline dotted;
+}
