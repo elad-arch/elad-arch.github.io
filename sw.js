@@ -3,10 +3,12 @@
 // ספריות חיצוניות: מהעותק השמור, ומתעדכנות ברקע.
 // קריאות ל-/api לא עוברות כאן לעולם.
 
-const CACHE_NAME = 'mazpen-v2';
+importScripts('/version.js'); // APP_VERSION - כל גרסה מקבלת עותק שמור חדש
+const CACHE_NAME = `mazpen-${APP_VERSION}`;
 const APP_SHELL = [
     '/',
     '/index.html',
+    '/version.js',
     '/script.js',
     '/styles.css',
     '/favicon.svg',

@@ -3363,3 +3363,11 @@ html.scroll-locked body {
     font-size: 14px;
     text-decoration: underline dotted;
 }
+
+.sheet-row.sheet-row-static {
+    cursor: default;
+}
+
+.sheet-row.sheet-row-static:hover {
+    background: transparent;
+}

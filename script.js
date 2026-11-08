@@ -2672,6 +2672,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     setupScrollLock();
     renderTodayDate();
+    document.getElementById('appVersion').textContent = typeof APP_VERSION === 'string' ? APP_VERSION : '';
     initStorage();
     document.body.classList.remove('preload');
 });
