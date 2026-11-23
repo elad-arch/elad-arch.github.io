@@ -93,6 +93,14 @@ function shiftDateKey(dateKey, days) {
     return date.toISOString().slice(0, 10);
 }
 
+// טקסט השגיאה, עם הכתובת שאליה ניסינו לפנות ופרטים טכניים - כדי שאפשר יהיה לזהות טעות הקלדה או חסימה
+function bankboxErrorText(result, baseUrl) {
+    const lines = [BANKBOX_ERROR_TEXTS[result.error] || BANKBOX_ERROR_TEXTS.http];
+    if (['network', 'cors', 'timeout'].includes(result.error) && baseUrl) lines.push(`כתובת: ${baseUrl}`);
+    if (result.detail) lines.push(`פרטים: ${result.detail}`);
+    return lines.join('\n');
+}
+
 async function fetchBankboxSummary(cfg) {
     const since = shiftDateKey(`${getCurrentMonthKey()}-01`, -10);
     let response;
@@ -104,7 +112,8 @@ async function fetchBankboxSummary(cfg) {
         });
     } catch (e) {
         if (e && (e.name === 'TimeoutError' || e.name === 'AbortError')) return { ok: false, error: 'timeout' };
-        return { ok: false, error: await diagnoseBankboxFailure(cfg.baseUrl) };
+        const detail = e ? `${e.name || 'Error'}: ${e.message || ''}`.trim() : '';
+        return { ok: false, error: await diagnoseBankboxFailure(cfg.baseUrl), detail };
     }
     if (response.status === 401) return { ok: false, error: 'invalid_token' };
     if (response.status === 403) return { ok: false, error: 'origin_not_allowed' };
@@ -134,7 +143,7 @@ async function syncBankbox({ manual = false } = {}) {
 
     if (manual) {
         if (!result.ok) {
-            openConfirmModal('שגיאה', BANKBOX_ERROR_TEXTS[result.error] || BANKBOX_ERROR_TEXTS.http, closeConfirmModal);
+            openConfirmModal('שגיאה', sanitizeHTML(bankboxErrorText(result, getBankboxSettings().baseUrl)).replace(/\n/g, '<br>'), closeConfirmModal);
         } else if (bankbox.proposals.length > 0) {
             openBankReview();
         } else {
@@ -486,7 +495,7 @@ async function saveBankSettings() {
     const result = await fetchBankboxSummary({ baseUrl, token });
     btn.disabled = false;
     if (!result.ok) {
-        errorEl.textContent = BANKBOX_ERROR_TEXTS[result.error] || BANKBOX_ERROR_TEXTS.http;
+        errorEl.textContent = bankboxErrorText(result, baseUrl);
         return;
     }
     saveStateForUndo();
