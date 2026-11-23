@@ -10,6 +10,7 @@ const APP_SHELL = [
     '/index.html',
     '/version.js',
     '/script.js',
+    '/bankbox.js',
     '/styles.css',
     '/favicon.svg',
     '/manifest.webmanifest',
