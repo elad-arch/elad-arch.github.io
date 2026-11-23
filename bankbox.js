@@ -251,16 +251,37 @@ function buildBankProposals(summary) {
             usedSettlements.add(settlement.id);
             // החיוב כבר ירד מהעו"ש החודש: להפסיק לספור את השורה, כדי שלא תיספר פעמיים
             if (row.checked) proposals.push({ key: `pass:${row.id}`, kind: 'pass', list: 'expenses', rowId: row.id, tx: settlement, card: true, standing: isStandingOrder(settlement) });
-        } else if (charges.length > 0) {
-            const amount = safeCalc(charges.reduce((sum, c) => sum + c.amount, 0));
-            if (amount !== safeCalc(row.amount)) {
-                proposals.push({
-                    key: `card:${row.id}`, kind: 'card-amount', rowId: row.id, from: row.amount, to: amount,
-                    date: chargeDates.sort()[0], estimated: linked.some(card => card.estimated)
-                });
-            }
         }
     });
+
+    // 2ב. סכום החיוב הקרוב של כל כרטיס - בחודש שבו החיוב יורד (למשל חיוב ב-1/12 נכנס לדצמבר).
+    // שורה שכבר לא פעילה באותו חודש (החיוב כבר ירד / סומן ידנית) לא מקבלת הצעה.
+    const linkedRows = (month.expenses || []).filter(row => row.type === 'variable' && Array.isArray(row.bankCardIds) && row.bankCardIds.length > 0);
+    const missingMonths = new Set();
+    linkedRows.forEach(row => {
+        const linked = cards.filter(card => row.bankCardIds.includes(card.id));
+        const byMonth = {};
+        linked.forEach(card => (card.upcomingCharges || []).forEach(c => {
+            if (typeof c.date !== 'string' || c.date.slice(0, 7) < monthKey) return;
+            (byMonth[c.date.slice(0, 7)] = byMonth[c.date.slice(0, 7)] || []).push(c);
+        }));
+        Object.keys(byMonth).sort().forEach(targetKey => {
+            const target = allData[targetKey];
+            if (!target) { missingMonths.add(targetKey); return; }
+            if (isLockedMonth(targetKey)) return;
+            const targetRow = findCardRowInMonth(target, row);
+            if (!targetRow || !targetRow.checked) return;
+            const charges = byMonth[targetKey];
+            const amount = safeCalc(charges.reduce((sum, c) => sum + c.amount, 0));
+            if (amount === safeCalc(targetRow.amount)) return;
+            proposals.push({
+                key: `card:${targetKey}:${targetRow.id}`, kind: 'card-amount', monthKey: targetKey, rowId: targetRow.id,
+                from: targetRow.amount, to: amount, date: charges.map(c => c.date).sort()[0],
+                estimated: linked.some(card => card.estimated)
+            });
+        });
+    });
+    const notes = [...missingMonths].sort().map(key => `יש חיוב אשראי צפוי ב${getMonthName(key)}, אבל החודש הזה עוד לא נוצר במצפן. אחרי שתיצור אותו, הסכום יוצע כאן.`);
 
     // 3. תנועות מתוכננות שכבר עברו בבנק
     const bankTx = transactions
@@ -292,7 +313,17 @@ function buildBankProposals(summary) {
         }
     });
 
-    return { proposals, note: '' };
+    return { proposals, note: notes.join(' ') };
+}
+
+// השורה של אותו כרטיס בחודש אחר: לפי השיוך לכרטיס, ואם אין - לפי סדרה או שם זהה
+function findCardRowInMonth(target, row) {
+    const rows = (target.expenses || []).filter(t => t.type === 'variable');
+    if (target === allData[getCurrentMonthKey()]) return rows.find(t => t.id === row.id) || null;
+    return rows.find(t => (t.bankCardIds || []).some(id => row.bankCardIds.includes(id)))
+        || (row.recurringId ? rows.find(t => t.recurringId === row.recurringId) : null)
+        || rows.find(t => t.description === row.description)
+        || null;
 }
 
 function refreshBankProposals() {
@@ -317,7 +348,8 @@ function applyBankProposals(keys) {
             if (currentMonth === monthKey) document.getElementById('currentBalanceInput').value = p.to;
             allData.settings.bankbox.appliedBalance = { month: monthKey, value: p.to, at: p.at };
         } else if (p.kind === 'card-amount') {
-            const row = find('expenses', p.rowId);
+            const target = allData[p.monthKey] || month;
+            const row = (target.expenses || []).find(t => t.id === p.rowId);
             if (row) {
                 row.amount = p.to;
                 row.bankEstimate = { date: p.date, at: bankbox.summary.generatedAt };
@@ -394,7 +426,10 @@ function describeProposal(p) {
     const row = (month[p.list || 'expenses'] || []).find(t => t.id === p.rowId);
     const name = row ? row.description : '';
     if (p.kind === 'card-amount') {
-        return { title: name, detail: `${formatMoney(p.from)} ← ${formatMoney(p.to)}`, note: `חיוב צפוי ב-${formatBankDate(p.date)}${p.estimated ? ' · הערכה לפי התנועות בכרטיס' : ''}` };
+        const target = allData[p.monthKey] || month;
+        const cardRow = (target.expenses || []).find(t => t.id === p.rowId);
+        const title = `${cardRow ? cardRow.description : ''}${p.monthKey && p.monthKey !== getCurrentMonthKey() ? ` · ${getMonthName(p.monthKey)}` : ''}`;
+        return { title, detail: `${formatMoney(p.from)} ← ${formatMoney(p.to)}`, note: `חיוב צפוי ב-${formatBankDate(p.date)}${p.estimated ? ' · הערכה לפי התנועות בכרטיס' : ''}` };
     }
     const verb = p.tx.amount > 0 ? 'נכנס' : 'ירד';
     return {
@@ -416,7 +451,7 @@ function openBankReview() {
         { title: 'כרטיסי אשראי', kinds: ['card-amount'] },
         { title: 'עבר בבנק', kinds: ['pass'] }
     ];
-    container.innerHTML = '';
+    container.innerHTML = bankbox.note ? `<p class="bank-hint">${sanitizeHTML(bankbox.note)}</p>` : '';
     groups.forEach(group => {
         const items = bankbox.proposals.filter(p => group.kinds.includes(p.kind));
         if (items.length === 0) return;
