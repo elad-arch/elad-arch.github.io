@@ -3550,3 +3550,6 @@ html.scroll-locked body {
     gap: 6px;
     margin-top: 4px;
 }
+
+/* שגיאת חיבור ל-BankBox: כמה שורות (הודעה, כתובת, פרטים) */
+#bankSettingsError { white-space: pre-line; overflow-wrap: anywhere; }
