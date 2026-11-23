@@ -18,13 +18,19 @@ const bankbox = {
     proposals: []
 };
 
-// מילות מפתח לזיהוי שורת חיוב אשראי בעו"ש לפי חברת האשראי
+// זיהוי *שחיוב* בעו"ש הוא חיוב אשראי נעשה לפי isCardSettlement שמגיע מ-BankBox.
+// מילות המפתח משמשות רק כדי לשייך את החיוב לחברת האשראי (אם BankBox לא שלח settlementProvider).
+// הטקסט מנורמל קודם (בלי גרשיים), כך ש'ויזה כא"ל' נקרא 'ויזה כאל'. מילים באנגלית נבדקות כמילה שלמה.
 const CARD_SETTLEMENT_KEYWORDS = {
-    visaCal: ['כאל', 'cal', 'כרטיסי אשראי לישראל'],
+    visaCal: ['כאל', 'כרטיסי אשראי לישראל', 'visa cal', 'cal'],
     isracard: ['ישראכרט', 'isracard'],
-    max: ['מקס', 'max', 'לאומי קארד'],
-    amex: ['אמריקן', 'אמקס', 'amex', 'american']
+    max: ['מקס', 'לאומי קארד', 'max'],
+    amex: ['אמריקן', 'אמקס', 'amex', 'american express']
 };
+// מילים כלליות, נבדקות רק אם אף מילה ספציפית לא נמצאה
+const CARD_SETTLEMENT_FALLBACK = { visaCal: ['ויזה', 'visa'] };
+// "הרשאה" היא הוראת קבע לחברת האשראי (למשל החזר הלוואה), ולא בהכרח החיוב החודשי של הכרטיס
+const STANDING_ORDER_WORDS = ['הרשאה', 'הוראת קבע'];
 
 const BANK_PROVIDER_NAMES = {
     visaCal: 'כאל', isracard: 'ישראכרט', max: 'מקס', amex: 'אמריקן אקספרס', mizrahi: 'מזרחי טפחות'
@@ -116,12 +122,36 @@ function maybeAutoSyncBankbox() {
 // ---------- חישוב ההצעות (לחודש הנוכחי בלבד) ----------
 
 function normalizeBankText(text) {
-    return String(text || '').toLowerCase().replace(/["'׳״`.,\-_/\\()]/g, ' ').replace(/\s+/g, ' ').trim();
+    return String(text || '').toLowerCase()
+        .replace(/["'׳״`]/g, '')
+        .replace(/[.,\-_/\\()]/g, ' ')
+        .replace(/\s+/g, ' ').trim();
 }
 
-function settlementMatchesProvider(description, provider) {
-    const text = normalizeBankText(description);
-    return (CARD_SETTLEMENT_KEYWORDS[provider] || []).some(word => text.includes(normalizeBankText(word)));
+function textHasWord(text, word) {
+    const w = normalizeBankText(word);
+    if (/^[a-z0-9 ]+$/.test(w)) return new RegExp(`(^|[^a-z0-9])${w}($|[^a-z0-9])`).test(text);
+    return text.includes(w);
+}
+
+function findProvider(text, table) {
+    return Object.keys(table).find(provider => table[provider].some(word => textHasWord(text, word))) || null;
+}
+
+// לאיזו חברת אשראי שייך חיוב בעו"ש
+function settlementProviderOf(tx) {
+    if (tx.settlementProvider) return tx.settlementProvider;
+    const text = normalizeBankText(tx.description);
+    return findProvider(text, CARD_SETTLEMENT_KEYWORDS) || findProvider(text, CARD_SETTLEMENT_FALLBACK);
+}
+
+function isStandingOrder(tx) {
+    const text = normalizeBankText(tx.description);
+    return STANDING_ORDER_WORDS.some(word => textHasWord(text, word));
+}
+
+function amountsClose(a, b) {
+    return Math.abs(Math.abs(a) - Math.abs(b)) <= Math.max(1, Math.abs(b) * 0.03);
 }
 
 function bankDay(dateKey) {
@@ -156,7 +186,8 @@ function buildBankProposals(summary) {
     }
 
     // 2. כרטיסי אשראי (שורות שמשויכות לכרטיס ב-BankBox)
-    const settlements = transactions.filter(t => t.kind === 'bank' && t.isCardSettlement && t.status === 'completed' && inMonth(t.date));
+    const settlements = transactions.filter(t => t.kind === 'bank' && t.isCardSettlement && t.status === 'completed' && inMonth(t.date) && t.amount);
+    const usedSettlements = new Set();
     (month.expenses || []).filter(row => row.type === 'variable' && Array.isArray(row.bankCardIds) && row.bankCardIds.length > 0).forEach(row => {
         const linked = cards.filter(card => row.bankCardIds.includes(card.id));
         if (linked.length === 0) return;
@@ -164,12 +195,22 @@ function buildBankProposals(summary) {
         linked.forEach(card => (card.upcomingCharges || []).forEach(c => { if (inMonth(c.date)) charges.push(c); }));
         const providers = [...new Set(linked.map(card => card.provider))];
         const chargeDates = charges.map(c => c.date);
-        const settlement = settlements.find(s => providers.some(p => settlementMatchesProvider(s.description, p))
-            && (chargeDates.length === 0 || chargeDates.includes(s.date)));
+        const chargesOn = date => charges.filter(c => c.date === date).reduce((sum, c) => sum + c.amount, 0);
+
+        // מועמדים: חיובי אשראי של אותה חברה, באותו תאריך כמו החיוב הצפוי (אם יש החודש)
+        const candidates = settlements.filter(s => !usedSettlements.has(s.id)
+            && providers.includes(settlementProviderOf(s))
+            && (chargeDates.length === 0 || chargeDates.includes(s.date)))
+            .map(s => ({ s, expected: chargeDates.length ? chargesOn(s.date) : row.amount }))
+            // הוראת קבע ("הרשאה") נחשבת חיוב של הכרטיס רק אם הסכום שלה כמעט זהה לצפוי
+            .filter(c => !isStandingOrder(c.s) || (c.expected && amountsClose(c.s.amount, c.expected)))
+            .sort((a, b) => Math.abs(Math.abs(a.s.amount) - (a.expected || 0)) - Math.abs(Math.abs(b.s.amount) - (b.expected || 0)));
+        const settlement = candidates.length ? candidates[0].s : null;
 
         if (settlement) {
+            usedSettlements.add(settlement.id);
             // החיוב כבר ירד מהעו"ש החודש: להפסיק לספור את השורה, כדי שלא תיספר פעמיים
-            if (row.checked) proposals.push({ key: `pass:${row.id}`, kind: 'pass', list: 'expenses', rowId: row.id, tx: settlement, card: true });
+            if (row.checked) proposals.push({ key: `pass:${row.id}`, kind: 'pass', list: 'expenses', rowId: row.id, tx: settlement, card: true, standing: isStandingOrder(settlement) });
         } else if (charges.length > 0) {
             const amount = safeCalc(charges.reduce((sum, c) => sum + c.amount, 0));
             if (amount !== safeCalc(row.amount)) {
@@ -183,7 +224,9 @@ function buildBankProposals(summary) {
 
     // 3. תנועות מתוכננות שכבר עברו בבנק
     const bankTx = transactions
-        .filter(t => t.kind === 'bank' && !t.isCardSettlement && t.status === 'completed' && inMonth(t.date) && t.amount)
+        // הוראות קבע לחברת אשראי ("הרשאה") שלא שויכו לכרטיס מותאמות כמו כל תנועה אחרת (למשל להחזר הלוואה)
+        .filter(t => t.kind === 'bank' && t.status === 'completed' && inMonth(t.date) && t.amount
+            && (!t.isCardSettlement || (isStandingOrder(t) && !usedSettlements.has(t.id))))
         .sort((a, b) => a.date.localeCompare(b.date));
     const usedItems = new Set();
     bankTx.forEach(tx => {
@@ -317,7 +360,7 @@ function describeProposal(p) {
     return {
         title: name,
         detail: `${verb} בבנק ${formatMoney(Math.abs(p.tx.amount))} ב-${formatBankDate(p.tx.date)}`,
-        note: `"${p.tx.description}"${p.card ? ' · חיוב כרטיס אשראי' : ''} · יסומן כ"עבר בבנק" ולא ייספר שוב`
+        note: `"${p.tx.description}"${p.card ? ' · חיוב כרטיס אשראי' : ''}${p.standing ? ' (הוראת קבע – כדאי לוודא)' : ''} · יסומן כ"עבר בבנק" ולא ייספר שוב`
     };
 }
 
@@ -464,6 +507,7 @@ function renderBankCardLinks() {
         wrapper.innerHTML = `
             <div class="bank-card-name">${sanitizeHTML(card.name || BANK_PROVIDER_NAMES[card.provider] || card.provider)}
                 <span class="bank-card-meta" dir="ltr">${card.last4 ? '••' + sanitizeHTML(card.last4) : ''}</span>
+                ${!card.nextChargeDate && !(card.upcomingCharges || []).length ? '<span class="bank-card-meta">· אין חיוב קרוב</span>' : ''}
                 ${suggested ? '<span class="auto-chip">הצעה</span>' : ''}
             </div>
             <select class="form-input bank-card-select" data-card-id="${sanitizeHTML(card.id)}" aria-label="שורת אשראי במצפן">${options.join('')}</select>`;
