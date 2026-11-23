@@ -63,6 +63,19 @@
 
 ---
 
+## 🏦 חיבור ל-BankBox
+
+המצפן יכול לקרוא נתונים מ-BankBox (שרת פרטי מבוסס `israeli-bank-scrapers`), דרך Tailscale בלבד:
+`GET https://<machine>.<tailnet>.ts.net/api/mazpen/v1/summary` עם `Authorization: Bearer <מפתח קריאה>`.
+
+1. ב-BankBox, ב-`.env`: `MAZPEN_ORIGINS=https://elad-arch-github-io.vercel.app` (ולבדיקה – גם כתובת ה-Preview המדויקת), ואז `docker compose up -d --build`.
+2. ב-BankBox: הגדרות ← גישה לאפליקציות אחרות ← יצירת מפתח קריאה.
+3. במצפן: תפריט ⋯ ← בנק ← חיבור ל-BankBox, להזין כתובת ומפתח, ואז לשייך את שורות כרטיסי האשראי.
+
+הסנכרון רק **מציע** עדכונים לחודש הנוכחי; שום דבר לא משתנה בלי אישור.
+
+---
+
 ## 🏷️ גרסאות
 
 מספר הגרסה מוגדר בקובץ `version.js` ומוצג באפליקציה (תפריט ⋯ ← אודות). בכל שדרוג:

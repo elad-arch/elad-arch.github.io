@@ -559,6 +559,8 @@ async function finishUnlock(data, rememberOnDevice) {
     document.getElementById('lockPasswordInput').value = '';
     updateBackupStatus();
 
+    maybeAutoSyncBankbox();
+
     // מבקש מהדפדפן לא למחוק את הנתונים כשחסר מקום
     if (navigator.storage && navigator.storage.persist) {
         navigator.storage.persist().catch(() => {});
@@ -804,6 +806,7 @@ function handleCreateNewMonth(newMonthKey, prevMonthKey, shouldCopy) {
             if (t.type === 'loan') {
                 if (t.completed) return;
                 const newLoan = { ...t, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, isExpanded: false };
+                delete newLoan.bankPassed;
                 if (!newLoan.globalLoanId) newLoan.globalLoanId = `loan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                 newLoan.loanCurrent++;
                 newLoan.completed = newLoan.loanCurrent >= newLoan.loanTotal;
@@ -1468,7 +1471,9 @@ function setFilter(type, filter) {
 }
 
 function exportData() {
-    const dataStr = JSON.stringify(allData, null, 2);
+    const copy = JSON.parse(JSON.stringify(allData));
+    if (copy.settings && copy.settings.bankbox) delete copy.settings.bankbox.token; // מפתח הגישה לא נכנס לקובץ
+    const dataStr = JSON.stringify(copy, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
@@ -1983,6 +1988,7 @@ function toggleCheck(event, type, id) {
     const transaction = list.find(t => t.id == id);
     if (transaction) {
         transaction.checked = !transaction.checked;
+        if (transaction.checked) delete transaction.bankPassed;
         // הפונקציות save ו-render יקראו עכשיו מתוך handleListClick
     }
 }
@@ -2193,6 +2199,8 @@ function render() {
     const isDataEmpty = !currentData || ((currentData.income || []).length === 0 && (currentData.expenses || []).length === 0 && getExistingMonths().length <= 1);
     if (deleteAllBtn) deleteAllBtn.disabled = isDataEmpty;
     if (deleteMonthBtn) deleteMonthBtn.disabled = isDataEmpty;
+    refreshBankProposals();
+    renderBankStatus();
 }
 
 // =======================================================
@@ -2311,6 +2319,7 @@ function renderTransactionList(type, filteredData, allDataForIndices) {
                             ${t.type === 'loan' && t.loanTotal && t.loanCurrent >= t.loanTotal ? '<span class="last-payment-badge">חיוב אחרון</span>' : ''}
                             <div class="transaction-icons">${iconsHTML}</div>
                         </div>
+                        ${t.bankPassed ? `<div class="transaction-badges"><span class="bank-badge passed" title="${sanitizeHTML(t.bankPassed.description || '')}">עבר בבנק · ${formatBankDate(t.bankPassed.date)}</span></div>` : (t.bankEstimate ? '<div class="transaction-badges"><span class="bank-badge">לפי הבנק</span></div>' : '')}
                         <div class="transaction-tags-container">${tagsHTML}</div>
                         ${dateNote}
                         
@@ -2653,6 +2662,8 @@ document.addEventListener('DOMContentLoaded', () => {
             closeTagsManagementModal();
             closeOverflowTagsModal();
             closeShortfallModal();
+            closeBankSettings();
+            closeBankReview();
             closeSheets();
         }
     });
@@ -2671,6 +2682,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     setupScrollLock();
+    setupBankbox();
     renderTodayDate();
     document.getElementById('appVersion').textContent = typeof APP_VERSION === 'string' ? APP_VERSION : '';
     initStorage();
@@ -3274,6 +3286,8 @@ function seriesFields(t) {
 function instanceFromSeries(t) {
     const base = t.seriesTemplate ? { ...t, ...t.seriesTemplate } : { ...t };
     delete base.seriesTemplate;
+    delete base.bankPassed;   // "עבר בבנק" ו"לפי הבנק" שייכים לחודש מסוים בלבד
+    delete base.bankEstimate;
     return { ...base, id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, checked: true };
 }
 
