@@ -1,10 +1,11 @@
 // sw.js - מאפשר לאפליקציה להיפתח גם בלי אינטרנט.
 // קבצי האפליקציה: קודם מהרשת (כדי לקבל עדכונים), ואם אין רשת - מהעותק השמור.
 // ספריות חיצוניות: מהעותק השמור, ומתעדכנות ברקע.
-// קריאות ל-/api לא עוברות כאן לעולם.
+// קריאות ל-/api ופניות ל-BankBox (או לכל שרת אחר) לא עוברות כאן לעולם ולא נשמרות.
 
 importScripts('/version.js'); // APP_VERSION - כל גרסה מקבלת עותק שמור חדש
 const CACHE_NAME = `mazpen-${APP_VERSION}`;
+const CDN_HOSTS = ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 const APP_SHELL = [
     '/',
     '/index.html',
@@ -36,6 +37,8 @@ self.addEventListener('fetch', (event) => {
     if (request.method !== 'GET') return;
     const url = new URL(request.url);
     if (url.origin === self.location.origin && url.pathname.startsWith('/api/')) return;
+    // מחוץ לאתר: רק הספריות המוכרות. כל השאר (למשל BankBox) הולך ישר לרשת, בלי מטמון.
+    if (url.origin !== self.location.origin && !CDN_HOSTS.includes(url.hostname)) return;
 
     if (url.origin === self.location.origin) {
         event.respondWith(
