@@ -37,12 +37,16 @@ const BANK_PROVIDER_NAMES = {
 };
 
 const BANKBOX_ERROR_TEXTS = {
-    network: 'אין חיבור ל-BankBox. כדאי לבדוק ש-Tailscale מחובר במכשיר.',
+    network: 'לא מצליח להגיע ל-BankBox בכתובת הזו. כדאי לבדוק ש-Tailscale מחובר, ולנסות לפתוח בדפדפן את הכתובת עם ‎/healthz בסוף – צריך להופיע ok.',
+    cors: 'BankBox זמין, אבל הדפדפן חסם את התשובה (CORS). כנראה שכתובת המצפן שפתוחה עכשיו לא מופיעה בדיוק ב-MAZPEN_ORIGINS בשרת.',
+    timeout: 'BankBox לא ענה בזמן. כדאי לנסות שוב בעוד רגע.',
     invalid_token: 'מפתח הגישה לא תקין או שבוטל. אפשר ליצור מפתח חדש ב-BankBox.',
     origin_not_allowed: 'BankBox לא מאשר את כתובת המצפן. צריך להוסיף אותה ל-MAZPEN_ORIGINS בשרת.',
     version: 'גרסת ה-API של BankBox לא נתמכת.',
     http: 'BankBox החזיר שגיאה. כדאי לנסות שוב מאוחר יותר.',
-    bad_url: 'הכתובת צריכה להתחיל ב-https:// (למשל https://bankbox.xxxx.ts.net).'
+    bad_url: 'הכתובת צריכה להתחיל ב-https:// (למשל https://bankbox.xxxx.ts.net).',
+    not_tsnet: 'הכתובת צריכה להיות כתובת ה-Tailscale של BankBox, שמסתיימת ב-ts.net (למשל https://bankbox.xxxx.ts.net). כתובת IP או שם קצר לא יעבדו.',
+    port: 'הכתובת לא צריכה לכלול פורט (למשל :8080). משתמשים בכתובת של tailscale serve, בלי פורט: https://bankbox.xxxx.ts.net'
 };
 
 function getBankboxSettings() {
@@ -54,9 +58,32 @@ function isBankboxConfigured() {
     return !!(cfg && cfg.baseUrl && cfg.token);
 }
 
+// מחזיר { url } או { error }. מקבל גם כתובת שהודבקה עם נתיב (למשל ‎/settings) ומשאיר רק את הבסיס.
+function parseBankboxUrl(value) {
+    let url;
+    try { url = new URL(String(value || '').trim()); } catch (e) { return { error: 'bad_url' }; }
+    if (url.protocol !== 'https:') return { error: 'bad_url' };
+    if (url.port) return { error: 'port' };
+    if (!/\.ts\.net$/i.test(url.hostname)) return { error: 'not_tsnet' };
+    return { url: url.origin };
+}
+
 function normalizeBankboxUrl(value) {
-    const url = String(value || '').trim().replace(/\/+$/, '');
-    return /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(url) ? url : null;
+    return parseBankboxUrl(value).url || null;
+}
+
+function timeoutSignal(ms) {
+    return (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(ms) : undefined;
+}
+
+// כשהבקשה נכשלה בלי תשובה: בודקים אם השרת בכלל זמין, כדי להבדיל בין "אין חיבור" לבין חסימת CORS
+async function diagnoseBankboxFailure(baseUrl) {
+    try {
+        await fetch(`${baseUrl}/healthz`, { mode: 'no-cors', cache: 'no-store', signal: timeoutSignal(8000) });
+        return 'cors';
+    } catch (e) {
+        return 'network';
+    }
 }
 
 function shiftDateKey(dateKey, days) {
@@ -71,10 +98,12 @@ async function fetchBankboxSummary(cfg) {
     try {
         response = await fetch(`${cfg.baseUrl}/api/mazpen/v1/summary?since=${since}`, {
             headers: { Authorization: `Bearer ${cfg.token}` },
-            cache: 'no-store'
+            cache: 'no-store',
+            signal: timeoutSignal(20000)
         });
     } catch (e) {
-        return { ok: false, error: 'network' };
+        if (e && (e.name === 'TimeoutError' || e.name === 'AbortError')) return { ok: false, error: 'timeout' };
+        return { ok: false, error: await diagnoseBankboxFailure(cfg.baseUrl) };
     }
     if (response.status === 401) return { ok: false, error: 'invalid_token' };
     if (response.status === 403) return { ok: false, error: 'origin_not_allowed' };
@@ -444,10 +473,11 @@ function closeBankSettings() {
 async function saveBankSettings() {
     const errorEl = document.getElementById('bankSettingsError');
     const btn = document.getElementById('bankSaveBtn');
-    const baseUrl = normalizeBankboxUrl(document.getElementById('bankUrlInput').value);
+    const parsed = parseBankboxUrl(document.getElementById('bankUrlInput').value);
+    const baseUrl = parsed.url;
     const existing = getBankboxSettings() || {};
     const token = document.getElementById('bankTokenInput').value.trim() || existing.token;
-    if (!baseUrl) { errorEl.textContent = BANKBOX_ERROR_TEXTS.bad_url; return; }
+    if (!baseUrl) { errorEl.textContent = BANKBOX_ERROR_TEXTS[parsed.error]; return; }
     if (!token) { errorEl.textContent = 'צריך להדביק את מפתח הגישה שנוצר ב-BankBox.'; return; }
 
     btn.disabled = true;
