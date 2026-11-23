@@ -32,6 +32,13 @@ self.addEventListener('activate', (event) => {
     );
 });
 
+// מאפשר לדף לשאול איזו גרסה של הרכיב פעילה (לאבחון)
+self.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'version' && event.ports && event.ports[0]) {
+        event.ports[0].postMessage({ version: APP_VERSION });
+    }
+});
+
 self.addEventListener('fetch', (event) => {
     const request = event.request;
     if (request.method !== 'GET') return;

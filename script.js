@@ -624,7 +624,10 @@ function initStorage() {
     });
 
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-        navigator.serviceWorker.register('/sw.js').catch(err => console.error('Service worker registration failed:', err));
+        navigator.serviceWorker.register('/sw.js')
+            .then(reg => reg.update().catch(() => {}))
+            .catch(err => console.error('Service worker registration failed:', err));
+        navigator.serviceWorker.addEventListener('controllerchange', renderSwVersion);
     }
 
     const remembered = getRememberedPassword();
@@ -2685,9 +2688,58 @@ document.addEventListener('DOMContentLoaded', () => {
     setupBankbox();
     renderTodayDate();
     document.getElementById('appVersion').textContent = typeof APP_VERSION === 'string' ? APP_VERSION : '';
+    renderSwVersion();
     initStorage();
     document.body.classList.remove('preload');
 });
+
+// ---------- רכיב האופליין (Service Worker) ----------
+
+// איזו גרסה של הרכיב שולטת בדף עכשיו. רכיב ישן (לפני 2.1.3) לא עונה.
+function getServiceWorkerVersion() {
+    const controller = 'serviceWorker' in navigator ? navigator.serviceWorker.controller : null;
+    if (!controller) return Promise.resolve('לא פעיל');
+    return new Promise(resolve => {
+        const channel = new MessageChannel();
+        const timer = setTimeout(() => resolve('ישן'), 1500);
+        channel.port1.onmessage = e => { clearTimeout(timer); resolve((e.data && e.data.version) || 'ישן'); };
+        try { controller.postMessage({ type: 'version' }, [channel.port2]); } catch (err) { clearTimeout(timer); resolve('ישן'); }
+    });
+}
+
+async function renderSwVersion() {
+    const el = document.getElementById('swVersion');
+    if (el) el.textContent = await getServiceWorkerVersion();
+}
+
+// מסיר את רכיב האופליין ואת העותקים השמורים של קבצי האפליקציה, וטוען מחדש.
+// הנתונים שלך (במכשיר ובענן) לא נמחקים.
+async function resetOfflineComponent() {
+    closeSheets();
+    const choice = await showChoiceDialog(
+        'רענון רכיב האופליין',
+        'הרכיב שמאפשר עבודה בלי אינטרנט יוסר וייטען מחדש, יחד עם העותקים השמורים של קבצי האפליקציה.<br><b>הנתונים שלך לא נמחקים.</b> האפליקציה תיטען מחדש.',
+        [
+            { label: 'רענון', value: 'ok', style: 'modal-btn-save' },
+            { label: 'ביטול', value: 'cancel' }
+        ]
+    );
+    if (choice !== 'ok') return;
+    try { await flushLocalSave(); } catch (e) { /* הנתונים כבר נשמרים בכל שינוי */ }
+    try {
+        if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map(r => r.unregister()));
+        }
+        if (window.caches) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+        }
+    } catch (e) {
+        console.error('Offline reset failed:', e);
+    }
+    location.reload();
+}
 
 // ---------- נעילת גלילת הרקע כשחלון פתוח ----------
 // overflow: hidden על html ו-body (בלי position: fixed, שגרם לרקע לבן מאחורי החלון)

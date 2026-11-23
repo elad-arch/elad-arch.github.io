@@ -97,7 +97,7 @@ function shiftDateKey(dateKey, days) {
 function bankboxErrorText(result, baseUrl) {
     const lines = [BANKBOX_ERROR_TEXTS[result.error] || BANKBOX_ERROR_TEXTS.http];
     if (['network', 'cors', 'timeout'].includes(result.error) && baseUrl) lines.push(`כתובת: ${baseUrl}`);
-    if (result.detail) lines.push(`פרטים: ${result.detail}`);
+    if (result.detail) lines.push(`פרטים: ${result.detail}${result.sw ? ` · רכיב אופליין: ${result.sw}` : ''}`);
     return lines.join('\n');
 }
 
@@ -113,7 +113,8 @@ async function fetchBankboxSummary(cfg) {
     } catch (e) {
         if (e && (e.name === 'TimeoutError' || e.name === 'AbortError')) return { ok: false, error: 'timeout' };
         const detail = e ? `${e.name || 'Error'}: ${e.message || ''}`.trim() : '';
-        return { ok: false, error: await diagnoseBankboxFailure(cfg.baseUrl), detail };
+        const sw = typeof getServiceWorkerVersion === 'function' ? await getServiceWorkerVersion() : '';
+        return { ok: false, error: await diagnoseBankboxFailure(cfg.baseUrl), detail, sw };
     }
     if (response.status === 401) return { ok: false, error: 'invalid_token' };
     if (response.status === 403) return { ok: false, error: 'origin_not_allowed' };
