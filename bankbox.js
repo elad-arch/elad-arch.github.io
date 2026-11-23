@@ -25,7 +25,8 @@ const CARD_SETTLEMENT_KEYWORDS = {
     visaCal: ['כאל', 'כרטיסי אשראי לישראל', 'visa cal', 'cal'],
     isracard: ['ישראכרט', 'isracard'],
     max: ['מקס', 'לאומי קארד', 'max'],
-    amex: ['אמריקן', 'אמקס', 'amex', 'american express']
+    amex: ['אמריקן', 'אמקס', 'amex', 'american express'],
+    diners: ['דיינרס', 'diners']
 };
 // מילים כלליות, נבדקות רק אם אף מילה ספציפית לא נמצאה
 const CARD_SETTLEMENT_FALLBACK = { visaCal: ['ויזה', 'visa'] };
@@ -33,7 +34,7 @@ const CARD_SETTLEMENT_FALLBACK = { visaCal: ['ויזה', 'visa'] };
 const STANDING_ORDER_WORDS = ['הרשאה', 'הוראת קבע'];
 
 const BANK_PROVIDER_NAMES = {
-    visaCal: 'כאל', isracard: 'ישראכרט', max: 'מקס', amex: 'אמריקן אקספרס', mizrahi: 'מזרחי טפחות'
+    visaCal: 'כאל', isracard: 'ישראכרט', max: 'מקס', amex: 'אמריקן אקספרס', diners: 'דיינרס', mizrahi: 'מזרחי טפחות'
 };
 
 const BANKBOX_ERROR_TEXTS = {
